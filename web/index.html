@@ -1,0 +1,1114 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ghost</title>
+    <link rel="stylesheet" href="style.css">
+    <script defer src="vendor/alpine.min.js"></script>
+    <script src="vendor/marked.min.js"></script>
+</head>
+<body x-data="ghostApp()" x-init="init()" x-cloak>
+<!-- Safety net: remove x-cloak após 3s mesmo se Alpine falhar -->
+<script>
+    window.addEventListener('error', (e) => {
+        console.error('[GLOBAL JS ERROR]', e.message, 'at', e.filename, ':', e.lineno);
+    });
+    setTimeout(() => { document.body.removeAttribute('x-cloak'); }, 3000);
+</script>
+
+<!-- Docked icon (visible only when window is collapsed to edge) -->
+<div class="docked-icon"
+     x-show="docked"
+     @click="expandFromEdge()"
+     data-tooltip="Clique para expandir">
+    <svg viewBox="0 0 32 32" fill="none" class="docked-glyph">
+        <path d="M16 4 L18 14 L28 16 L18 18 L16 28 L14 18 L4 16 L14 14 Z"
+              fill="currentColor" stroke="currentColor" stroke-width="0.6" stroke-linejoin="round"/>
+    </svg>
+</div>
+
+<div class="app" x-show="!docked" :class="{ 'compact': compactMode }">
+    <!-- Compact bar quick controls (only visible in compactMode) -->
+    <div class="compact-controls" x-show="compactMode">
+        <div class="compact-drag" @mousedown="startDrag($event)" data-tooltip-pos="below" data-tooltip="Arraste para mover">
+            <span class="compact-brand-dot"></span>
+            <span class="compact-brand-text">Ghost</span>
+        </div>
+
+        <!-- Tools: Watch | Meeting | Auto-ler | Visibility -->
+        <button class="compact-btn" :class="{ 'active-tertiary': watchEnabled, locked: apiKeyMissing }"
+                @click="toggleWatch()"
+                :disabled="apiKeyMissing"
+                data-tooltip-pos="below"
+                :data-tooltip="apiKeyMissing ? apiLockTooltip : (watchEnabled ? 'Parar de vigiar' : 'Vigiar a tela')">
+            <svg viewBox="0 0 14 14" fill="none">
+                <circle cx="7" cy="7" r="1.3" fill="currentColor"/>
+                <circle cx="7" cy="7" r="3" stroke="currentColor" stroke-width="1.1"/>
+                <circle cx="7" cy="7" r="5" stroke="currentColor" stroke-width="1" stroke-opacity="0.55"/>
+            </svg>
+            <span class="tool-dot" x-show="watchEnabled"></span>
+            <span class="tool-lock" x-show="apiKeyMissing"></span>
+        </button>
+
+        <button class="compact-btn" :class="{ recording: meetingRunning, processing: meetingProcessing, locked: apiKeyMissing }"
+                @click="toggleMeeting()" :disabled="meetingProcessing || apiKeyMissing"
+                data-tooltip-pos="below"
+                :data-tooltip="apiKeyMissing ? apiLockTooltip : meetingTooltip">
+            <svg viewBox="0 0 14 14" fill="none">
+                <rect x="5" y="2" width="4" height="6" rx="2" stroke="currentColor" stroke-width="1.2"/>
+                <path d="M3.5 7a3.5 3.5 0 007 0M7 10.5v2M5.5 12.5h3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+            </svg>
+            <span class="tool-dot tool-dot-rec" x-show="meetingRunning"></span>
+            <span class="tool-lock" x-show="apiKeyMissing"></span>
+        </button>
+
+        <button class="compact-btn" :class="{ 'active-tertiary': autoSpeak }"
+                @click="toggleAutoSpeak()"
+                data-tooltip-pos="below"
+                :data-tooltip="autoSpeak ? 'Auto-ler ATIVO' : 'Ativar leitura automática'">
+            <svg viewBox="0 0 14 14" fill="none"><path d="M5 5H3a1 1 0 00-1 1v2a1 1 0 001 1h2l3 2.5v-9L5 5z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><path d="M10.5 5.2c.8.7.8 2.9 0 3.6" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+        </button>
+
+        <button class="compact-btn" :class="{ 'active-tertiary': captureVisible }"
+                @click="toggleCaptureVisibility()"
+                data-tooltip-pos="below"
+                :data-tooltip="captureVisible ? 'Ghost visível em screen share' : 'Ghost invisível em screen share'">
+            <svg x-show="!captureVisible" viewBox="0 0 14 14" fill="none"><path d="M1.5 1.5l11 11M5.5 5.5a2 2 0 002.8 2.8M3 3.2C1.7 4.3 1 5.6 1 7c0 1.7 1.7 4.4 6 4.4 1.2 0 2.1-.2 2.9-.5M5 2C5.6 1.8 6.3 1.6 7 1.6c4.3 0 6 3 6 4.4 0 1-.5 2-1.5 3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+            <svg x-show="captureVisible" viewBox="0 0 14 14" fill="none"><path d="M1 7s1.7-4.4 6-4.4S13 7 13 7s-1.7 4.4-6 4.4S1 7 1 7z" stroke="currentColor" stroke-width="1.2"/><circle cx="7" cy="7" r="1.8" stroke="currentColor" stroke-width="1.2"/></svg>
+        </button>
+
+        <span class="compact-divider"></span>
+
+        <button class="compact-btn" @click="dockFromCompact()" data-tooltip-pos="below" data-tooltip="Encolher para o canto">
+            <svg viewBox="0 0 14 14" fill="none"><path d="M3 7h6M7 4l3 3-3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 2v10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        </button>
+        <button class="compact-btn" @click="exitCompact()" data-tooltip-pos="below" data-tooltip="Voltar ao tamanho normal">
+            <svg viewBox="0 0 14 14" fill="none"><path d="M3 7h8M5 4l-2 3 2 3M9 4l2 3-2 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <button class="compact-btn compact-btn-close" @click="closeApp()" data-tooltip-pos="below" data-tooltip="Fechar">
+            <svg viewBox="0 0 14 14" fill="none"><path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+        </button>
+    </div>
+
+
+    <!-- HEADER (Windows 11 title bar) -->
+    <header class="header" @mousedown="startDrag($event)">
+        <span class="brand">Ghost</span>
+        <div class="header-actions">
+            <!-- Toolbar: features (Vigiar, Reunião, Auto-ler) + visibilidade + ações -->
+            <div class="header-action-group">
+                <!-- Features toolbar -->
+                <button class="tool-btn"
+                        :class="{ active: watchEnabled, locked: apiKeyMissing }"
+                        @click="toggleWatch()"
+                        :disabled="apiKeyMissing"
+                        data-tooltip-pos="below"
+                        :data-tooltip="apiKeyMissing ? apiLockTooltip : (watchEnabled ? 'Parar de vigiar a tela' : 'Vigiar a tela continuamente')">
+                    <svg viewBox="0 0 16 16" fill="none">
+                        <circle cx="8" cy="8" r="1.6" fill="currentColor"/>
+                        <circle cx="8" cy="8" r="3.5" stroke="currentColor" stroke-width="1.2"/>
+                        <circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.1" stroke-opacity="0.55"/>
+                    </svg>
+                    <span class="tool-dot" x-show="watchEnabled"></span>
+                    <span class="tool-lock" x-show="apiKeyMissing"></span>
+                </button>
+
+                <button class="tool-btn"
+                        :class="{ recording: meetingRunning, processing: meetingProcessing, locked: apiKeyMissing }"
+                        @click="toggleMeeting()"
+                        :disabled="meetingProcessing || apiKeyMissing"
+                        data-tooltip-pos="below"
+                        :data-tooltip="apiKeyMissing ? apiLockTooltip : meetingTooltip">
+                    <svg viewBox="0 0 16 16" fill="none">
+                        <rect x="6" y="2" width="4" height="7" rx="2" stroke="currentColor" stroke-width="1.3"/>
+                        <path d="M4 8a4 4 0 008 0M8 12v2M6 14h4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+                    </svg>
+                    <span class="tool-dot tool-dot-rec" x-show="meetingRunning"></span>
+                    <span class="tool-lock" x-show="apiKeyMissing"></span>
+                </button>
+
+                <button class="tool-btn"
+                        :class="{ active: autoSpeak }"
+                        @click="toggleAutoSpeak()"
+                        data-tooltip-pos="below"
+                        :data-tooltip="autoSpeak ? 'Leitura automática ATIVA' : 'Ativar leitura automática'">
+                    <svg viewBox="0 0 16 16" fill="none">
+                        <path d="M6 5H3.5a1 1 0 00-1 1v4a1 1 0 001 1H6l3.5 3V2L6 5z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/>
+                        <path d="M12 6c1 .8 1 3.2 0 4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+                        <path d="M13.5 4c2 1.4 2 6.2 0 7.6" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+                    </svg>
+                </button>
+
+                <button class="tool-btn"
+                        :class="{ active: captureVisible }"
+                        @click="toggleCaptureVisibility()"
+                        data-tooltip-pos="below"
+                        :data-tooltip="captureVisible ? 'Ghost visível em screen share' : 'Ghost invisível em screen share'">
+                    <svg x-show="!captureVisible" viewBox="0 0 16 16" fill="none">
+                        <path d="M2 2l12 12M6.5 6.5a2 2 0 002.8 2.8M3.5 3.5C1.8 4.8 1 6.5 1 8c0 2 2 5 7 5 1.3 0 2.4-.2 3.4-.6M5.5 2.3C6.3 2.1 7.1 2 8 2c5 0 7 3 7 5 0 1.1-.6 2.4-1.7 3.4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+                    </svg>
+                    <svg x-show="captureVisible" viewBox="0 0 16 16" fill="none">
+                        <path d="M1 8s2-5 7-5 7 5 7 5-2 5-7 5-7-5-7-5z" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+                        <circle cx="8" cy="8" r="2" stroke="currentColor" stroke-width="1.3"/>
+                    </svg>
+                </button>
+
+                <span class="tool-divider"></span>
+
+                <button class="tool-btn" @click="openHistoryModal()" data-tooltip-pos="below" data-tooltip="Histórico de conversas">
+                    <svg viewBox="0 0 16 16" fill="none">
+                        <circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.3"/>
+                        <path d="M8 4.5V8l2.5 1.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </button>
+
+                <button class="tool-btn" @click="shortcutsModalOpen = true" data-tooltip-pos="below" data-tooltip="Atalhos de teclado">
+                    <svg viewBox="0 0 16 16" fill="none">
+                        <rect x="1.5" y="4" width="13" height="8" rx="1.5" stroke="currentColor" stroke-width="1.2"/>
+                        <path d="M4 7h0.1M6 7h0.1M8 7h0.1M10 7h0.1M12 7h0.1M4 9h0.1M5.5 10.5h5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+                    </svg>
+                </button>
+
+                <button class="tool-btn" @click="settingsModalOpen = true; loadSettings()" data-tooltip-pos="below" data-tooltip="Configurações">
+                    <svg viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="2.2" stroke="currentColor" stroke-width="1.3"/><path d="M8 1.5v1.8M8 12.7v1.8M14.5 8h-1.8M3.3 8H1.5M12.6 3.4l-1.3 1.3M4.7 11.3l-1.3 1.3M12.6 12.6l-1.3-1.3M4.7 4.7L3.4 3.4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+                </button>
+                <button class="btn-nova" @click="newConversation()">Nova</button>
+            </div>
+
+            <!-- Windows 11 style titlebar controls (dock | minimize | close) -->
+            <div class="header-window-controls">
+                <button class="btn-titlebar" @click="dockToEdge()" data-tooltip-pos="below" data-tooltip="Encolher para o canto">
+                    <svg viewBox="0 0 12 12" fill="none"><path d="M2 6h5M6 3l3 3-3 3" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"/><path d="M10.5 2v8" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>
+                </button>
+                <button class="btn-titlebar" @click="enterCompact()" data-tooltip-pos="below" data-tooltip="Minimizar (barra no rodapé)">
+                    <svg viewBox="0 0 12 12" fill="none"><path d="M2.5 6.5h7" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>
+                </button>
+                <button class="btn-titlebar btn-close" @click="closeApp()" data-tooltip-pos="below" data-tooltip="Fechar">
+                    <svg viewBox="0 0 12 12" fill="none"><path d="M2.5 2.5l7 7M9.5 2.5l-7 7" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- CHAT -->
+    <main class="chat" x-ref="chatScroll">
+
+        <!-- Empty state -->
+        <div class="empty-state" x-show="messages.length === 0">
+            <div class="empty-icon">✨</div>
+            <h1 class="empty-title">Como posso ajudar?</h1>
+            <p class="empty-sub">Capture uma tela ou faça uma pergunta para começar a interagir com a inteligência.</p>
+        </div>
+
+        <!-- Messages -->
+        <template x-for="(msg, idx) in messages" :key="idx">
+            <div class="msg">
+
+                <template x-if="msg.role === 'user'">
+                    <div class="msg-user">
+                        <div class="msg-user-bubble">
+                            <template x-if="msg.image">
+                                <img :src="msg.image" alt="Captura">
+                            </template>
+                            <template x-if="msg.transcript">
+                                <div class="msg-transcript">
+                                    <div class="msg-transcript-head">
+                                        <svg viewBox="0 0 14 14" fill="none">
+                                            <path d="M2.5 5h2l3-2.5v9L4.5 9h-2a1 1 0 01-1-1V6a1 1 0 011-1z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/>
+                                            <path d="M9.2 5c.7.6.7 2.8 0 3.4" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/>
+                                            <path d="M11 3.5c1.6 1.2 1.6 5.5 0 6.7" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/>
+                                        </svg>
+                                        <span>Trecho de áudio</span>
+                                    </div>
+                                    <div class="msg-transcript-body" x-text="msg.transcript"></div>
+                                </div>
+                            </template>
+                            <p class="msg-user-text" x-show="msg.text" x-text="msg.text"></p>
+                        </div>
+                    </div>
+                </template>
+
+                <template x-if="msg.role === 'assistant'">
+                    <div class="msg-assistant" :class="{ 'select-mode': selectModeIdx === idx }">
+                        <!-- API key notice card (substitui mensagem de erro feia) -->
+                        <template x-if="msg.needsApiKey">
+                            <div class="api-key-notice">
+                                <div class="api-key-notice-icon">
+                                    <svg viewBox="0 0 20 20" fill="none">
+                                        <circle cx="7.5" cy="10" r="3" stroke="currentColor" stroke-width="1.6"/>
+                                        <path d="M10.5 10h6.5v3M14 10v3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+                                    </svg>
+                                </div>
+                                <div class="api-key-notice-body">
+                                    <div class="api-key-notice-title">Chave da OpenAI não configurada</div>
+                                    <p class="api-key-notice-desc">
+                                        Pra conversar com o Ghost, precisamos da sua chave da OpenAI.
+                                        Ela é salva localmente no seu computador e usada só nas chamadas pra OpenAI.
+                                    </p>
+                                    <div class="api-key-notice-actions">
+                                        <button class="notice-btn-primary" @click="openSettingsFromNotice()">
+                                            <svg viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="2" stroke="currentColor" stroke-width="1.3"/><path d="M7 1v2M7 11v2M13 7h-2M3 7H1M11.2 2.8l-1.4 1.4M4.2 9.8l-1.4 1.4M11.2 11.2l-1.4-1.4M4.2 4.2L2.8 2.8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+                                            Abrir Configurações
+                                        </button>
+                                        <button class="notice-btn-secondary" @click="openUrl('https://platform.openai.com/api-keys')">
+                                            <svg viewBox="0 0 14 14" fill="none"><path d="M5.5 3H3a1 1 0 00-1 1v7a1 1 0 001 1h7a1 1 0 001-1V8.5M8.5 2h3.5v3.5M7.5 6.5L11.5 2.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                                            Obter chave grátis
+                                        </button>
+                                    </div>
+                                    <p class="api-key-notice-hint">
+                                        Pagamento é por uso — tipicamente menos de US$1 por mês com uso casual.
+                                    </p>
+                                </div>
+                            </div>
+                        </template>
+
+                        <div class="msg-assistant-header" x-show="!msg.needsApiKey">
+                            <div class="msg-assistant-avatar">✦</div>
+                            <span class="msg-assistant-label">ASSISTANT</span>
+                            <template x-if="msg.loading">
+                                <div class="loading-dots"><span></span><span></span><span></span></div>
+                            </template>
+                            <template x-if="!msg.loading && msg.text">
+                                <div class="msg-actions">
+                                    <button class="speak-btn"
+                                            :class="{ speaking: speakingIdx === idx }"
+                                            @click="toggleSpeak(idx)"
+                                            :data-tooltip="speakingIdx === idx ? 'Parar leitura' : 'Ler em voz alta'">
+                                        <template x-if="speakingIdx === idx">
+                                            <span class="speak-bars"><span></span><span></span><span></span><span></span></span>
+                                        </template>
+                                        <template x-if="speakingIdx !== idx">
+                                            <svg viewBox="0 0 14 14" fill="none"><path d="M5 4.5H3a1 1 0 00-1 1v3a1 1 0 001 1h2l3 2.5v-10L5 4.5z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/><path d="M10 5.2c.8.7.8 2.9 0 3.6" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>
+                                        </template>
+                                        <span x-text="speakingIdx === idx ? 'Parar' : 'Ouvir'"></span>
+                                    </button>
+
+                                    <button class="msg-action-btn"
+                                            @click="copyAssistantMessage(idx, $event)"
+                                            :data-tooltip="copiedIdx === idx ? 'Copiado!' : 'Copiar resposta inteira'">
+                                        <svg x-show="copiedIdx !== idx" viewBox="0 0 14 14" fill="none"><rect x="3" y="3" width="7" height="9" rx="1" stroke="currentColor" stroke-width="1.2"/><path d="M5 3V2a1 1 0 011-1h5a1 1 0 011 1v8a1 1 0 01-1 1h-1" stroke="currentColor" stroke-width="1.2"/></svg>
+                                        <svg x-show="copiedIdx === idx" viewBox="0 0 14 14" fill="none"><path d="M2.5 7l3 3 6-7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                                        <span x-text="copiedIdx === idx ? 'Copiado' : 'Copiar'"></span>
+                                    </button>
+
+                                    <button class="msg-action-btn"
+                                            :class="{ active: selectModeIdx === idx, flash: copiedSelIdx === idx }"
+                                            @mousedown.prevent
+                                            @click="toggleSelectMode(idx, $event)"
+                                            :data-tooltip="copiedSelIdx === idx ? 'Copiado!' : (selectModeIdx === idx ? 'Clique de novo pra copiar a seleção' : 'Ativar modo de seleção')">
+                                        <svg x-show="copiedSelIdx !== idx" viewBox="0 0 14 14" fill="none"><path d="M3 3h8M3 6h8M3 9h5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><rect x="7" y="7" width="5" height="5" rx="0.5" stroke="currentColor" stroke-width="1.2" :fill="selectModeIdx === idx ? 'currentColor' : 'none'" fill-opacity="0.3"/></svg>
+                                        <svg x-show="copiedSelIdx === idx" viewBox="0 0 14 14" fill="none"><path d="M2.5 7l3 3 6-7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                                        <span x-text="copiedSelIdx === idx ? 'Copiado' : (selectModeIdx === idx ? 'Copiar seleção' : 'Selecionar trecho')"></span>
+                                    </button>
+                                </div>
+                            </template>
+                        </div>
+                        <div class="msg-assistant-body md" :class="{ streaming: msg.streaming }" x-html="renderMarkdown(msg.text)" x-show="!msg.needsApiKey"></div>
+
+                        <!-- Quick actions (aparece após resposta finalizada) -->
+                        <template x-if="!msg.loading && !msg.streaming && msg.text && !msg.needsApiKey">
+                            <div class="quick-actions">
+                                <button class="quick-action" @click="applyQuickAction(idx, 'simplify')" data-tooltip="Explicar de forma mais simples">
+                                    <span>✨</span> Simplificar
+                                </button>
+                                <button class="quick-action" @click="applyQuickAction(idx, 'detail')" data-tooltip="Me dê mais detalhes">
+                                    <span>🔍</span> Detalhar
+                                </button>
+                                <button class="quick-action" @click="applyQuickAction(idx, 'example')" data-tooltip="Mostre um exemplo">
+                                    <span>💡</span> Exemplo
+                                </button>
+                                <button class="quick-action" @click="applyQuickAction(idx, 'shorter')" data-tooltip="Resumir em 2-3 frases">
+                                    <span>✂</span> Resumir
+                                </button>
+                                <button class="quick-action" @click="applyQuickAction(idx, 'translate_en')" data-tooltip="Traduzir pra inglês">
+                                    <span>🌐</span> EN
+                                </button>
+                                <button class="quick-action" @click="applyQuickAction(idx, 'continue')" data-tooltip="Continuar resposta">
+                                    <span>↪</span> Continuar
+                                </button>
+                            </div>
+                        </template>
+                    </div>
+                </template>
+
+            </div>
+        </template>
+
+    </main>
+
+    <!-- COMPOSER -->
+    <section class="composer">
+
+        <!-- Chips row (Fluent combo boxes em dois grupos: contexto | ações) -->
+        <div class="chips">
+            <div class="chip-group chip-group-context">
+                <!-- Preset dropdown -->
+                <div class="chip" :class="{ open: presetOpen }" @click.away="presetOpen = false">
+                    <button class="chip-trigger" @click="captureModeOpen = false; monitorOpen = false; presetOpen = !presetOpen" type="button"
+                            :data-tooltip="presetOpen ? '' : 'Preset: ' + (selectedPreset || 'nenhum')">
+                        <svg class="chip-ico-left" viewBox="0 0 16 16" fill="none">
+                            <path d="M3 4h10M3 8h10M3 12h7" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+                        </svg>
+                        <span class="chip-value" x-text="selectedPreset || 'Carregando...'"></span>
+                        <svg class="chip-caret" viewBox="0 0 10 6" fill="none">
+                            <path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+                        </svg>
+                    </button>
+                    <div class="chip-flyout" x-show="presetOpen" x-transition.opacity.duration.120ms x-cloak>
+                        <div class="chip-flyout-label">Preset de análise</div>
+                        <template x-for="p in presets" :key="p">
+                            <button class="chip-option"
+                                    :class="{ selected: selectedPreset === p }"
+                                    @click="selectedPreset = p; presetOpen = false"
+                                    type="button">
+                                <span class="chip-option-check">
+                                    <svg x-show="selectedPreset === p" viewBox="0 0 12 12" fill="none"><path d="M2.5 6.5l2.5 2.5 4.5-5.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                                </span>
+                                <span class="chip-option-label" x-text="p"></span>
+                            </button>
+                        </template>
+                    </div>
+                </div>
+
+                <!-- Capture mode dropdown -->
+                <div class="chip" :class="{ open: captureModeOpen }" @click.away="captureModeOpen = false">
+                    <button class="chip-trigger" @click="presetOpen = false; monitorOpen = false; captureModeOpen = !captureModeOpen" type="button"
+                            :data-tooltip="captureModeOpen ? '' : 'Modo: ' + captureModeLabel">
+                        <svg class="chip-ico-left" viewBox="0 0 16 16" fill="none">
+                            <rect x="2" y="3.5" width="12" height="9" rx="2" stroke="currentColor" stroke-width="1.3"/>
+                            <circle cx="8" cy="8" r="1.8" stroke="currentColor" stroke-width="1.3"/>
+                        </svg>
+                        <span class="chip-value" x-text="captureModeLabel"></span>
+                        <svg class="chip-caret" viewBox="0 0 10 6" fill="none">
+                            <path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+                        </svg>
+                    </button>
+                    <div class="chip-flyout" x-show="captureModeOpen" x-transition.opacity.duration.120ms x-cloak>
+                        <div class="chip-flyout-label">Modo de captura</div>
+                        <template x-for="m in captureModes" :key="m.value">
+                            <button class="chip-option"
+                                    :class="{ selected: captureMode === m.value }"
+                                    @click="captureMode = m.value; captureModeOpen = false"
+                                    type="button">
+                                <span class="chip-option-check">
+                                    <svg x-show="captureMode === m.value" viewBox="0 0 12 12" fill="none"><path d="M2.5 6.5l2.5 2.5 4.5-5.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                                </span>
+                                <span class="chip-option-icon" x-text="m.icon"></span>
+                                <span class="chip-option-label" x-text="m.label"></span>
+                            </button>
+                        </template>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Meeting status banner -->
+        <div class="meeting-banner" x-show="meetingRunning || meetingProcessing" x-transition>
+            <span class="meeting-banner-label" x-text="meetingProcessing ? 'PROCESSANDO' : 'GRAVANDO'"></span>
+            <span class="meeting-banner-time" x-text="meetingElapsed" x-show="meetingRunning"></span>
+            <span class="meeting-banner-status" x-text="meetingStatusText"></span>
+        </div>
+
+        <!-- Scroll options (conditional) -->
+        <div class="scroll-opts" x-show="captureMode === 'scroll'">
+            <span class="scroll-opts-label">Rolagem</span>
+
+            <div class="chip chip-mini" :class="{ open: monitorOpen }" @click.away="monitorOpen = false">
+                <button class="chip-trigger" @click="presetOpen = false; captureModeOpen = false; monitorOpen = !monitorOpen" type="button">
+                    <span class="chip-value" x-text="selectedMonitorLabel"></span>
+                    <svg class="chip-caret" viewBox="0 0 10 6" fill="none">
+                        <path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+                    </svg>
+                </button>
+                <div class="chip-flyout" x-show="monitorOpen" x-transition.opacity.duration.120ms x-cloak>
+                    <div class="chip-flyout-label">Monitor</div>
+                    <template x-for="m in monitors" :key="m.index">
+                        <button class="chip-option"
+                                :class="{ selected: selectedMonitor === m.index }"
+                                @click="selectedMonitor = m.index; monitorOpen = false"
+                                type="button">
+                            <span class="chip-option-check">
+                                <svg x-show="selectedMonitor === m.index" viewBox="0 0 12 12" fill="none"><path d="M2.5 6.5l2.5 2.5 4.5-5.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                            </span>
+                            <span class="chip-option-label" x-text="m.label"></span>
+                        </button>
+                    </template>
+                </div>
+            </div>
+
+            <div class="num-stepper">
+                <button @click="maxScrolls = Math.max(3, maxScrolls - 5)">−</button>
+                <span class="num-stepper-value" x-text="maxScrolls + ' páginas'"></span>
+                <button @click="maxScrolls = Math.min(100, maxScrolls + 5)">+</button>
+            </div>
+        </div>
+
+        <!-- Dropped files chips (arquivos arrastados aguardando envio) -->
+        <div class="dropped-files" x-show="droppedFiles.length" x-transition x-cloak>
+            <template x-for="(f, i) in droppedFiles" :key="f.filename + i">
+                <div class="dropped-chip" :class="{ 'is-image': f.kind === 'image' }">
+                    <template x-if="f.kind === 'image'">
+                        <img :src="f.data_url" alt="" class="dropped-thumb">
+                    </template>
+                    <template x-if="f.kind !== 'image'">
+                        <svg viewBox="0 0 14 14" fill="none" class="dropped-icon">
+                            <path d="M8 1.5H4a1 1 0 00-1 1v9a1 1 0 001 1h6a1 1 0 001-1V4.5L8 1.5z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/>
+                            <path d="M8 1.5v3h3" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/>
+                        </svg>
+                    </template>
+                    <span class="dropped-name" x-text="f.filename"></span>
+                    <span class="dropped-note" x-text="f.note" x-show="f.note"></span>
+                    <button class="dropped-remove" @click="removeDroppedFile(i)" data-tooltip="Remover">
+                        <svg viewBox="0 0 10 10" fill="none"><path d="M2 2l6 6M8 2l-6 6" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+                    </button>
+                </div>
+            </template>
+        </div>
+
+        <!-- Live Q&A durante reunião -->
+        <div class="meeting-qa" x-show="meetingRunning" x-transition x-cloak>
+            <div class="meeting-qa-label">
+                <span class="meeting-qa-dot"></span>
+                Perguntar sobre a reunião em andamento
+            </div>
+            <div class="meeting-qa-row">
+                <input type="text" class="meeting-qa-input"
+                       x-model="meetingQuestion"
+                       @keydown.enter.prevent="askMeetingLive()"
+                       :readonly="meetingQaAsking"
+                       placeholder="Ex: o que foi decidido sobre X?">
+                <button class="meeting-qa-btn"
+                        @click="askMeetingLive()"
+                        :disabled="meetingQaAsking || !meetingQuestion.trim()">
+                    <span x-show="!meetingQaAsking">Perguntar</span>
+                    <span x-show="meetingQaAsking" class="voice-spin"></span>
+                </button>
+            </div>
+        </div>
+
+        <!-- System audio transcript context panel -->
+        <div class="transcript-panel" x-show="systemTranscript" x-transition x-cloak>
+            <div class="transcript-panel-head">
+                <svg viewBox="0 0 16 16" fill="none" class="transcript-icon">
+                    <path d="M3 6h2l3-2.5v9L5 10H3a1 1 0 01-1-1V7a1 1 0 011-1z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/>
+                    <path d="M10.5 6c.8.7.8 3.3 0 4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+                    <path d="M12.5 4.2c1.8 1.4 1.8 6.2 0 7.6" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+                </svg>
+                <span class="transcript-label">Trecho de áudio transcrito</span>
+                <span class="transcript-hint">será enviado com sua pergunta</span>
+                <button class="transcript-clear" @click="clearSystemTranscript()" data-tooltip="Descartar transcrição">
+                    <svg viewBox="0 0 12 12" fill="none"><path d="M2.5 2.5l7 7M9.5 2.5l-7 7" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+                </button>
+            </div>
+            <div class="transcript-body" x-text="systemTranscript"></div>
+        </div>
+
+        <!-- Composer pill -->
+        <div class="composer-pill" :class="{ busy: busy }">
+            <button class="pill-btn-capture"
+                    :class="{ locked: apiKeyMissing }"
+                    @click="triggerCapture()"
+                    :disabled="apiKeyMissing"
+                    :data-tooltip="apiKeyMissing ? apiLockTooltip : captureTooltip">
+                <span x-text="captureIcon"></span>
+                <span class="tool-lock" x-show="apiKeyMissing"></span>
+            </button>
+            <button class="pill-btn-capture kbd-toggle"
+                    :class="{ active: kbdCapture }"
+                    @click="toggleKbdCapture()"
+                    :data-tooltip="kbdCapture ? 'Captura de teclado ATIVA (Esc sai)' : 'Captura de teclado global'">
+                <span x-show="!kbdCapture">⌨</span>
+                <span x-show="kbdCapture" class="kbd-indicator">●</span>
+            </button>
+
+            <!-- Voice input: gravar mic -->
+            <button class="pill-btn-capture voice-btn"
+                    :class="{ 'recording-mic': voiceRecording && voiceSource === 'mic', 'transcribing': voiceTranscribing, locked: apiKeyMissing }"
+                    @click="toggleVoice('mic')"
+                    :disabled="apiKeyMissing || (voiceTranscribing && voiceSource !== 'mic')"
+                    :data-tooltip="apiKeyMissing ? apiLockTooltip : (voiceRecording && voiceSource === 'mic' ? 'Parar e transcrever (' + voiceElapsed + ')' : 'Gravar pergunta por voz (microfone)')">
+                <svg x-show="!(voiceRecording && voiceSource === 'mic') && !(voiceTranscribing && voiceSource === 'mic')" viewBox="0 0 16 16" fill="none">
+                    <rect x="6" y="2" width="4" height="7" rx="2" stroke="currentColor" stroke-width="1.3"/>
+                    <path d="M4 8a4 4 0 008 0M8 12v2M6 14h4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+                </svg>
+                <svg x-show="voiceRecording && voiceSource === 'mic'" viewBox="0 0 16 16" fill="currentColor">
+                    <rect x="5" y="5" width="6" height="6" rx="1"/>
+                </svg>
+                <span x-show="voiceTranscribing && voiceSource === 'mic'" class="voice-spin"></span>
+                <span class="tool-lock" x-show="apiKeyMissing"></span>
+            </button>
+
+            <!-- Voice input: gravar áudio do sistema -->
+            <button class="pill-btn-capture voice-btn"
+                    :class="{ 'recording-sys': voiceRecording && voiceSource === 'system', 'transcribing': voiceTranscribing, locked: apiKeyMissing }"
+                    @click="toggleVoice('system')"
+                    :disabled="apiKeyMissing || (voiceTranscribing && voiceSource !== 'system')"
+                    :data-tooltip="apiKeyMissing ? apiLockTooltip : (voiceRecording && voiceSource === 'system' ? 'Parar e transcrever (' + voiceElapsed + ')' : 'Gravar áudio do sistema (sem microfone)')">
+                <svg x-show="!(voiceRecording && voiceSource === 'system') && !(voiceTranscribing && voiceSource === 'system')" viewBox="0 0 16 16" fill="none">
+                    <path d="M3 6h2l3-2.5v9L5 10H3a1 1 0 01-1-1V7a1 1 0 011-1z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/>
+                    <path d="M10.5 6c.8.7.8 3.3 0 4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+                    <path d="M12.5 4.2c1.8 1.4 1.8 6.2 0 7.6" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+                </svg>
+                <svg x-show="voiceRecording && voiceSource === 'system'" viewBox="0 0 16 16" fill="currentColor">
+                    <rect x="5" y="5" width="6" height="6" rx="1"/>
+                </svg>
+                <span x-show="voiceTranscribing && voiceSource === 'system'" class="voice-spin"></span>
+                <span class="tool-lock" x-show="apiKeyMissing"></span>
+            </button>
+            <input class="pill-input" type="text"
+                   x-ref="promptInput"
+                   x-model="inputText"
+                   @mousedown="onInputClick($event)"
+                   @keydown.enter.prevent="sendMessage()"
+                   :readonly="kbdCapture"
+                   :placeholder="kbdCapture ? 'Modo global ativo — Enter envia, Esc sai' : (systemTranscript ? 'Sua pergunta sobre o trecho acima...' : 'Digite sua pergunta...')">
+            <button class="pill-btn-send" @click="sendMessage()" data-tooltip="Enviar (Enter)">
+                <svg viewBox="0 0 16 16" fill="none"><path d="M8 13V3M4 7l4-4 4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+        </div>
+
+    </section>
+
+</div>
+
+<!-- Settings modal (API key) -->
+<div class="modal-backdrop" x-show="settingsModalOpen" x-transition
+     @click.self="settingsModalOpen = false">
+    <div class="modal">
+        <div class="modal-header">
+            <h2>⚙ Configurações</h2>
+            <button class="btn-icon" @click="settingsModalOpen = false">
+                <svg viewBox="0 0 14 14" fill="none"><path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+            </button>
+        </div>
+        <div class="modal-body">
+            <div class="settings-section">
+                <label class="settings-label">OpenAI API Key</label>
+                <p class="settings-hint">
+                    Gere sua chave gratuitamente em
+                    <a href="#" @click.prevent="openUrl('https://platform.openai.com/api-keys')">platform.openai.com/api-keys</a>.
+                    Você paga por token apenas pelo que usar (~$0.0001 por pergunta).
+                </p>
+                <div class="settings-current" x-show="settings.has_openai_key">
+                    <span>Chave configurada:</span>
+                    <code x-text="settings.masked_key"></code>
+                    <button class="clear-btn" @click="clearKey()" data-tooltip="Remover chave">Remover</button>
+                </div>
+
+                <template x-if="!settings.has_openai_key">
+                    <div>
+                        <div class="settings-input-row">
+                            <input type="password"
+                                   x-model="openaiKeyInput"
+                                   placeholder="Clique em 'Colar' após copiar a chave"
+                                   :disabled="savingKey"
+                                   readonly
+                                   class="settings-input">
+                            <button class="settings-paste-btn" @click="pasteKey()" :disabled="savingKey">
+                                📋 Colar
+                            </button>
+                            <button class="settings-save-btn"
+                                    @click="saveKey()"
+                                    :disabled="savingKey || !openaiKeyInput.trim()"
+                                    x-text="savingKey ? 'Validando...' : 'Salvar'"></button>
+                        </div>
+                        <p class="settings-sub-hint">
+                            Como o Ghost não rouba foco de outros apps, não dá pra digitar direto.
+                            Copie a chave no navegador (Ctrl+C) e clique em <strong>Colar</strong>.
+                        </p>
+                    </div>
+                </template>
+
+                <p class="settings-sub-hint" x-show="settings.has_openai_key">
+                    Para trocar a chave, clique em <strong>Remover</strong> acima primeiro.
+                </p>
+                <div class="settings-error" x-show="settingsError" x-text="settingsError"></div>
+                <div class="settings-success" x-show="settingsSuccess" x-text="settingsSuccess"></div>
+
+                <div class="settings-perms" x-show="keyPermissions">
+                    <div class="settings-perms-title">Permissões verificadas</div>
+                    <div class="perm-row" :class="{ ok: keyPermissions?.models }">
+                        <span x-text="keyPermissions?.models ? '✓' : '✗'"></span>
+                        <span>Leitura de modelos</span>
+                    </div>
+                    <div class="perm-row" :class="{ ok: keyPermissions?.chat }">
+                        <span x-text="keyPermissions?.chat ? '✓' : '✗'"></span>
+                        <span>Chat Completions (análise de tela, perguntas)</span>
+                    </div>
+                    <div class="perm-row" :class="{ ok: keyPermissions?.audio === true, warn: keyPermissions?.audio === false }">
+                        <span x-text="keyPermissions?.audio === true ? '✓' : (keyPermissions?.audio === false ? '⚠' : '?')"></span>
+                        <span>Whisper / Audio (transcrição de reuniões)</span>
+                    </div>
+                </div>
+                <template x-for="w in keyWarnings" :key="w">
+                    <div class="settings-warning" x-text="w"></div>
+                </template>
+            </div>
+
+            <!-- Model picker -->
+            <div class="settings-section" style="margin-top:20px;"
+                 x-show="settings.has_openai_key && modelsByTier.length">
+                <label class="settings-label">Modelo da OpenAI</label>
+                <p class="settings-hint">
+                    Todos aceitam <strong>imagem</strong> e respondem bem.
+                    Custo é estimado pra uma pergunta média com screenshot.
+                </p>
+
+                <!-- Seletor de moeda + cotação ao vivo -->
+                <div class="currency-block">
+                    <div class="currency-picker-row">
+                        <span class="currency-row-icon">
+                            <svg viewBox="0 0 16 16" fill="none">
+                                <circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-width="1.3"/>
+                                <path d="M10 6c-.5-1-1.3-1.3-2.2-1.3-1.3 0-2.3.8-2.3 2 0 2 4.5 1.4 4.5 3.5 0 1.2-1 2-2.3 2-.9 0-1.8-.3-2.3-1.3M8 3.3v9.4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+                            </svg>
+                        </span>
+                        <span class="currency-label">Moeda</span>
+
+                        <div class="chip chip-currency"
+                             :class="{ open: currencyOpen }"
+                             @click.away="currencyOpen = false">
+                            <button class="chip-trigger" type="button"
+                                    @click="currencyOpen = !currencyOpen">
+                                <span class="currency-flag"
+                                      x-text="currencySymbol"></span>
+                                <span class="chip-value"
+                                      x-text="(_currencySupport.find(c => c.code === currency) || {}).label"></span>
+                                <svg class="chip-caret" viewBox="0 0 10 6" fill="none">
+                                    <path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+                                </svg>
+                            </button>
+                            <div class="chip-flyout" x-show="currencyOpen" x-transition.opacity.duration.120ms x-cloak>
+                                <div class="chip-flyout-label">Moeda de exibição</div>
+                                <template x-for="c in _currencySupport" :key="c.code">
+                                    <button class="chip-option"
+                                            :class="{ selected: currency === c.code }"
+                                            @click="setCurrency(c.code)"
+                                            type="button">
+                                        <span class="chip-option-check">
+                                            <svg x-show="currency === c.code" viewBox="0 0 12 12" fill="none"><path d="M2.5 6.5l2.5 2.5 4.5-5.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                                        </span>
+                                        <span class="chip-option-icon" x-text="c.symbol"></span>
+                                        <span class="chip-option-label" x-text="c.label"></span>
+                                    </button>
+                                </template>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Cotação (só aparece se não for USD) -->
+                    <div class="rate-display" x-show="currency !== 'USD'" x-cloak>
+                        <span class="rate-loading" x-show="exchangeLoading">atualizando cotação...</span>
+                        <template x-if="!exchangeLoading">
+                            <div class="rate-badge-row">
+                                <div class="rate-badge">
+                                    <span class="rate-from">1 USD</span>
+                                    <span class="rate-arrow">→</span>
+                                    <span class="rate-to" x-text="exchangeRateShort"></span>
+                                </div>
+                                <span class="rate-meta" x-show="exchangeRateDate">
+                                    cotação de <span x-text="exchangeRateDateBR"></span> · fonte ECB
+                                </span>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+
+                <template x-for="group in modelsByTier" :key="group.tier">
+                    <div class="model-group">
+                        <div class="model-group-header">
+                            <span class="model-group-icon" x-text="group.icon"></span>
+                            <span class="model-group-label" x-text="group.label"></span>
+                        </div>
+                        <template x-for="m in group.models" :key="m.id">
+                            <label class="model-card"
+                                   :class="{ selected: settings.openai_model === m.id }">
+                                <input type="radio" name="openai-model"
+                                       :value="m.id"
+                                       :checked="settings.openai_model === m.id"
+                                       @change="selectModel(m.id)">
+
+                                <div class="model-card-check">
+                                    <svg x-show="settings.openai_model === m.id" viewBox="0 0 14 14" fill="none">
+                                        <path d="M3 7.5l3 3 5-6.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                    </svg>
+                                </div>
+
+                                <div class="model-card-body">
+                                    <div class="model-card-head">
+                                        <span class="model-card-name" x-text="m.name"></span>
+                                        <template x-if="m.recommended">
+                                            <span class="model-badge badge-recommended">⭐ Recomendado</span>
+                                        </template>
+                                        <template x-if="settings.openai_model === m.id">
+                                            <span class="model-badge badge-active">✓ em uso</span>
+                                        </template>
+                                    </div>
+
+                                    <div class="model-card-desc" x-text="m.description"></div>
+
+                                    <div class="model-card-cost">
+                                        <span class="cost-amount" x-text="formatUsd(m.cost_per_100)"></span>
+                                        <span class="cost-converted"
+                                              x-show="currency !== 'USD'"
+                                              x-text="'≈ ' + formatConverted(m.cost_per_100)"></span>
+                                        <span class="cost-unit">a cada 100 perguntas</span>
+                                    </div>
+                                </div>
+                            </label>
+                        </template>
+                    </div>
+                </template>
+
+                <div class="settings-success" x-show="modelSaveMsg" x-text="modelSaveMsg" style="margin-top:6px;"></div>
+
+                <div class="pricing-footer">
+                    <svg viewBox="0 0 14 14" fill="none" class="pricing-footer-icon">
+                        <circle cx="7" cy="7" r="5.5" stroke="currentColor" stroke-width="1.2"/>
+                        <path d="M7 4v3.5M7 9.5v.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+                    </svg>
+                    <span>
+                        Preços podem ter mudado desde a última atualização.
+                        <a href="#" @click.prevent="openUrl('https://platform.openai.com/docs/pricing')">
+                            Ver tabela oficial na OpenAI →
+                        </a>
+                    </span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Shortcuts modal (keyboard reference) -->
+<div class="modal-backdrop" x-show="shortcutsModalOpen" x-transition
+     @click.self="shortcutsModalOpen = false"
+     @keydown.escape.window="shortcutsModalOpen = false" x-cloak>
+    <div class="modal shortcuts-modal">
+        <div class="modal-header">
+            <h2>
+                <svg viewBox="0 0 16 16" fill="none" style="width:16px;height:16px;display:inline;vertical-align:-3px;margin-right:6px;">
+                    <rect x="1.5" y="4" width="13" height="8" rx="1.5" stroke="currentColor" stroke-width="1.2"/>
+                    <path d="M4 7h0.1M6 7h0.1M8 7h0.1M10 7h0.1M12 7h0.1M4 9h0.1M5.5 10.5h5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+                </svg>
+                Atalhos
+            </h2>
+            <button class="btn-icon" @click="shortcutsModalOpen = false">
+                <svg viewBox="0 0 14 14" fill="none"><path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+            </button>
+        </div>
+
+        <div class="modal-body">
+            <!-- Grupo: Global (funciona fora do Ghost) -->
+            <div class="shortcut-group">
+                <div class="shortcut-group-title">
+                    <span class="shortcut-group-icon">🌐</span>
+                    Global <span class="shortcut-group-hint">(funciona em qualquer app)</span>
+                </div>
+                <div class="shortcut-row">
+                    <div class="shortcut-keys">
+                        <kbd>Ctrl</kbd><span class="kbd-plus">+</span>
+                        <kbd>Shift</kbd><span class="kbd-plus">+</span>
+                        <kbd>G</kbd>
+                    </div>
+                    <div class="shortcut-desc">Mostrar / ocultar o Ghost</div>
+                </div>
+            </div>
+
+            <!-- Grupo: No chat -->
+            <div class="shortcut-group">
+                <div class="shortcut-group-title">
+                    <span class="shortcut-group-icon">💬</span>
+                    No chat
+                </div>
+                <div class="shortcut-row">
+                    <div class="shortcut-keys">
+                        <kbd>Enter</kbd>
+                    </div>
+                    <div class="shortcut-desc">Enviar pergunta</div>
+                </div>
+                <div class="shortcut-row">
+                    <div class="shortcut-keys">
+                        <kbd>Ctrl</kbd><span class="kbd-plus">+</span>
+                        <kbd>C</kbd>
+                    </div>
+                    <div class="shortcut-desc">Copiar trecho selecionado (após ativar "Selecionar trecho")</div>
+                </div>
+            </div>
+
+            <!-- Grupo: Captura de teclado -->
+            <div class="shortcut-group">
+                <div class="shortcut-group-title">
+                    <span class="shortcut-group-icon">⌨</span>
+                    Captura de teclado ativa
+                    <span class="shortcut-group-hint">(clique no ícone ⌨ no composer)</span>
+                </div>
+                <div class="shortcut-row">
+                    <div class="shortcut-keys">
+                        <kbd class="kbd-wide">A–Z</kbd>
+                        <span class="kbd-sep">·</span>
+                        <kbd class="kbd-wide">0–9</kbd>
+                    </div>
+                    <div class="shortcut-desc">Digita no campo sem o Ghost roubar foco</div>
+                </div>
+                <div class="shortcut-row">
+                    <div class="shortcut-keys"><kbd>Enter</kbd></div>
+                    <div class="shortcut-desc">Envia imediatamente</div>
+                </div>
+                <div class="shortcut-row">
+                    <div class="shortcut-keys"><kbd>Esc</kbd></div>
+                    <div class="shortcut-desc">Desativa captura global</div>
+                </div>
+                <div class="shortcut-row">
+                    <div class="shortcut-keys"><kbd>Backspace</kbd></div>
+                    <div class="shortcut-desc">Apaga último caractere do campo</div>
+                </div>
+            </div>
+
+            <!-- Grupo: Captura de tela automática -->
+            <div class="shortcut-group">
+                <div class="shortcut-group-title">
+                    <span class="shortcut-group-icon">📷</span>
+                    Durante captura de área
+                </div>
+                <div class="shortcut-row">
+                    <div class="shortcut-keys"><kbd>Esc</kbd></div>
+                    <div class="shortcut-desc">Cancela a seleção de área</div>
+                </div>
+                <div class="shortcut-row">
+                    <div class="shortcut-keys">
+                        <kbd class="kbd-wide">Click + Drag</kbd>
+                    </div>
+                    <div class="shortcut-desc">Define a região a capturar</div>
+                </div>
+            </div>
+
+            <p class="shortcuts-footnote">
+                💡 Dica: o Ghost nunca rouba foco. Você pode digitar em qualquer app e,
+                com a captura de teclado ativa (<kbd class="kbd-inline">⌨</kbd>), as teclas
+                vão pro campo do Ghost automaticamente.
+            </p>
+        </div>
+    </div>
+</div>
+
+<!-- Drag overlay (aparece quando arrastando arquivo) -->
+<div class="drag-overlay" x-show="isDragOver" x-cloak>
+    <div class="drag-overlay-inner">
+        <svg viewBox="0 0 48 48" fill="none">
+            <path d="M24 6v24M14 20l10-10 10 10" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <rect x="6" y="34" width="36" height="8" rx="2" stroke="currentColor" stroke-width="2"/>
+        </svg>
+        <div class="drag-overlay-title">Solte o arquivo aqui</div>
+        <div class="drag-overlay-hint">Imagens, PDF, texto, código</div>
+    </div>
+</div>
+
+<!-- Histórico de conversas -->
+<div class="modal-backdrop" x-show="historyModalOpen" x-transition
+     @click.self="historyModalOpen = false"
+     @keydown.escape.window="historyModalOpen = false" x-cloak>
+    <div class="modal history-modal">
+        <div class="modal-header">
+            <h2>Histórico de conversas</h2>
+            <button class="btn-icon" @click="historyModalOpen = false">
+                <svg viewBox="0 0 14 14" fill="none"><path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+            </button>
+        </div>
+        <div class="modal-body">
+            <template x-if="!historyList.length">
+                <div class="history-empty">
+                    <div class="history-empty-icon">💬</div>
+                    <div>Nenhuma conversa salva ainda</div>
+                    <div class="history-empty-hint">Suas conversas aparecerão aqui automaticamente</div>
+                </div>
+            </template>
+            <template x-if="historyList.length">
+                <div class="history-list">
+                    <template x-for="c in historyList" :key="c.id">
+                        <div class="history-item"
+                             :class="{ active: currentConvId === c.id }"
+                             @click="switchToConversation(c.id)">
+                            <div class="history-item-body">
+                                <div class="history-item-title" x-text="c.title"></div>
+                                <div class="history-item-meta">
+                                    <span x-text="c.message_count + ' msgs'"></span>
+                                    <span class="history-dot">·</span>
+                                    <span x-text="c.updated_at.replace('T', ' ').slice(0, 16)"></span>
+                                </div>
+                            </div>
+                            <button class="history-item-delete"
+                                    @click="deleteConversation(c.id, $event)"
+                                    data-tooltip="Apagar conversa">
+                                <svg viewBox="0 0 14 14" fill="none"><path d="M3 4.5h8M5.5 4.5V3.2a1 1 0 011-1h1a1 1 0 011 1v1.3M4 4.5l.6 7.3a1 1 0 001 .9h2.8a1 1 0 001-.9l.6-7.3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                            </button>
+                        </div>
+                    </template>
+                </div>
+            </template>
+        </div>
+    </div>
+</div>
+
+<!-- Sensitive info warning modal -->
+<div class="modal-backdrop" x-show="sensitiveWarning" x-transition
+     @click.self="dismissSensitiveWarning('cancel')"
+     @keydown.escape.window="dismissSensitiveWarning('cancel')" x-cloak>
+    <div class="modal sensitive-modal">
+        <div class="modal-header">
+            <h2>⚠ Detectamos dados sensíveis</h2>
+            <button class="btn-icon" @click="dismissSensitiveWarning('cancel')">
+                <svg viewBox="0 0 14 14" fill="none"><path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+            </button>
+        </div>
+        <div class="modal-body">
+            <p class="sensitive-intro">
+                Antes de enviar pra OpenAI, identifiquei os seguintes padrões que parecem dados pessoais:
+            </p>
+            <div class="sensitive-list">
+                <template x-for="s in (sensitiveWarning?.types || [])" :key="s.type">
+                    <div class="sensitive-item">
+                        <span class="sensitive-type" x-text="s.type"></span>
+                        <span class="sensitive-count" x-text="s.count + (s.count > 1 ? ' ocorrências' : ' ocorrência')"></span>
+                        <code class="sensitive-sample" x-text="s.sample"></code>
+                    </div>
+                </template>
+            </div>
+            <p class="sensitive-hint">
+                O texto será enviado via API da OpenAI. Se for informação de terceiros ou sigilosa,
+                considere remover antes de prosseguir.
+            </p>
+        </div>
+        <div class="modal-footer">
+            <button class="modal-btn-secondary" @click="dismissSensitiveWarning('cancel')">Cancelar</button>
+            <button class="modal-btn-primary" @click="dismissSensitiveWarning('send')"
+                    style="background: linear-gradient(135deg, #ffb77e, #c48744);">
+                Enviar mesmo assim
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Close confirmation modal -->
+<div class="modal-backdrop" x-show="closeConfirmOpen" x-transition
+     @click.self="closeConfirmOpen = false"
+     @keydown.escape.window="closeConfirmOpen = false" x-cloak>
+    <div class="modal close-confirm-modal">
+        <div class="modal-header">
+            <h2>Fechar o Ghost?</h2>
+            <button class="btn-icon" @click="closeConfirmOpen = false">
+                <svg viewBox="0 0 14 14" fill="none"><path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+            </button>
+        </div>
+        <div class="modal-body">
+            <p class="close-confirm-intro">
+                O que você quer fazer?
+            </p>
+
+            <div class="close-option-list">
+                <button class="close-option close-option-hide" @click="confirmClose('hide')">
+                    <div class="close-option-icon">
+                        <svg viewBox="0 0 20 20" fill="none">
+                            <path d="M2 10s2.5-6 8-6 8 6 8 6-2.5 6-8 6-8-6-8-6z" stroke="currentColor" stroke-width="1.4"/>
+                            <path d="M3 3l14 14" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+                        </svg>
+                    </div>
+                    <div class="close-option-body">
+                        <div class="close-option-title">Apenas ocultar</div>
+                        <div class="close-option-desc">
+                            Fica rodando em segundo plano. Pressione
+                            <kbd class="kbd-inline">Ctrl</kbd> +
+                            <kbd class="kbd-inline">Shift</kbd> +
+                            <kbd class="kbd-inline">G</kbd>
+                            pra trazer de volta quando precisar.
+                        </div>
+                    </div>
+                </button>
+
+                <button class="close-option close-option-exit" @click="confirmClose('exit')">
+                    <div class="close-option-icon close-option-icon-danger">
+                        <svg viewBox="0 0 20 20" fill="none">
+                            <path d="M7.5 2.5h-3a2 2 0 00-2 2v11a2 2 0 002 2h3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+                            <path d="M14 6l4 4-4 4M18 10H8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </div>
+                    <div class="close-option-body">
+                        <div class="close-option-title">Encerrar aplicação</div>
+                        <div class="close-option-desc">
+                            Fecha de vez — todos os processos do Ghost serão finalizados.
+                            Vai precisar abrir o app pelo ícone pra usar de novo.
+                        </div>
+                    </div>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Meeting target picker modal -->
+<div class="modal-backdrop" x-show="meetingModalOpen" x-transition @click.self="meetingModalOpen = false">
+    <div class="modal">
+        <div class="modal-header">
+            <h2>🎙 Iniciar reunião</h2>
+            <button class="btn-icon" @click="meetingModalOpen = false">
+                <svg viewBox="0 0 14 14" fill="none"><path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+            </button>
+        </div>
+
+        <div class="modal-body">
+            <p class="modal-hint">
+                <strong>Áudio</strong> grava todo som do sistema + microfone.
+                Silencie Spotify, notificações e outros apps antes de iniciar.
+            </p>
+
+            <div class="modal-section-label">O que gravar visualmente</div>
+
+            <div class="target-group">
+                <div class="target-group-title">Monitores</div>
+                <template x-for="m in monitors" :key="'mon-' + m.index">
+                    <label class="target-option">
+                        <input type="radio" name="mtarget"
+                               :value="'monitor:' + m.index"
+                               x-model="meetingTarget">
+                        <span class="target-icon">🖥</span>
+                        <span class="target-text">
+                            <strong x-text="'Monitor ' + m.index"></strong>
+                            <span class="target-meta" x-text="m.width + '×' + m.height"></span>
+                        </span>
+                    </label>
+                </template>
+            </div>
+
+            <div class="target-group" x-show="availableWindows.length > 0">
+                <div class="target-group-title">Janelas abertas</div>
+                <div class="target-scroll">
+                    <template x-for="w in availableWindows" :key="'win-' + w.hwnd">
+                        <label class="target-option">
+                            <input type="radio" name="mtarget"
+                                   :value="'window:' + w.hwnd"
+                                   x-model="meetingTarget">
+                            <span class="target-icon">🪟</span>
+                            <span class="target-text">
+                                <strong x-text="w.title"></strong>
+                                <span class="target-meta" x-text="w.width + '×' + w.height"></span>
+                            </span>
+                        </label>
+                    </template>
+                </div>
+            </div>
+        </div>
+
+        <div class="modal-footer">
+            <button class="modal-btn-secondary" @click="meetingModalOpen = false">Cancelar</button>
+            <button class="modal-btn-primary" @click="confirmMeetingStart()">
+                <span class="meeting-dot" style="background:#fff; box-shadow: 0 0 8px rgba(255,255,255,0.6);"></span>
+                Iniciar gravação
+            </button>
+        </div>
+    </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

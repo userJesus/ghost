@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Teste de Foco — Ghost</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: system-ui, sans-serif;
+            background: #0e0e0e;
+            color: #e5e2e1;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 32px;
+        }
+        .card {
+            max-width: 580px;
+            background: #1b1c1c;
+            border: 1px solid #3d4a44;
+            border-radius: 16px;
+            padding: 40px;
+            text-align: center;
+        }
+        h1 {
+            color: #61dbb4;
+            font-size: 24px;
+            margin-bottom: 8px;
+        }
+        .counter {
+            font-size: 48px;
+            font-weight: 700;
+            color: #ffb77e;
+            font-family: 'JetBrains Mono', monospace;
+            margin: 24px 0;
+        }
+        .status {
+            display: inline-block;
+            padding: 8px 16px;
+            border-radius: 999px;
+            font-size: 12px;
+            font-weight: 600;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            margin-bottom: 20px;
+        }
+        .status.focused {
+            background: rgba(97, 219, 180, 0.15);
+            color: #61dbb4;
+            border: 1px solid #61dbb4;
+        }
+        .status.blurred {
+            background: rgba(255, 85, 85, 0.15);
+            color: #ff5555;
+            border: 1px solid #ff5555;
+        }
+        p {
+            color: #bccac2;
+            line-height: 1.6;
+            margin: 10px 0;
+        }
+        code {
+            background: #2a2a2a;
+            color: #ffb77e;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: monospace;
+        }
+        .log {
+            margin-top: 24px;
+            background: #0e0e0e;
+            border: 1px solid #3d4a44;
+            border-radius: 8px;
+            padding: 12px;
+            text-align: left;
+            font-family: monospace;
+            font-size: 11px;
+            color: #bccac2;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .log-entry { margin: 4px 0; }
+        .log-entry.blur { color: #ff8e8e; }
+        .log-entry.focus { color: #61dbb4; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h1>Teste de Foco do Ghost</h1>
+        <p>Esta página <strong>recarrega</strong> toda vez que perde o foco.</p>
+
+        <div class="counter" id="counter">0</div>
+        <div class="status focused" id="status">FOCO ATIVO</div>
+
+        <p>Como testar:</p>
+        <p>
+            1. Mantenha esta aba em <strong>foco</strong> (clique aqui agora)<br>
+            2. Clique em qualquer elemento do <strong>Ghost</strong>
+        </p>
+        <p>
+            Se o contador <strong>resetar para 0</strong> ou a página recarregar,
+            o Ghost está <strong style="color:#ff5555">roubando o foco</strong>.<br>
+            Se o contador continuar aumentando, o Ghost <strong style="color:#61dbb4">preserva o foco</strong> corretamente.
+        </p>
+
+        <div class="log" id="log"></div>
+    </div>
+
+    <script>
+        const counterEl = document.getElementById('counter');
+        const statusEl = document.getElementById('status');
+        const logEl = document.getElementById('log');
+
+        let counter = parseInt(sessionStorage.getItem('focusCounter') || '0', 10);
+        counterEl.textContent = counter;
+
+        function log(msg, cls) {
+            const time = new Date().toLocaleTimeString('pt-BR');
+            const entry = document.createElement('div');
+            entry.className = 'log-entry ' + (cls || '');
+            entry.textContent = `[${time}] ${msg}`;
+            logEl.prepend(entry);
+            const entries = logEl.querySelectorAll('.log-entry');
+            if (entries.length > 30) entries[entries.length - 1].remove();
+        }
+
+        log(`Página carregada (contador = ${counter})`, 'focus');
+
+        setInterval(() => {
+            if (document.hasFocus()) {
+                counter++;
+                counterEl.textContent = counter;
+                sessionStorage.setItem('focusCounter', String(counter));
+            }
+        }, 1000);
+
+        window.addEventListener('blur', () => {
+            statusEl.className = 'status blurred';
+            statusEl.textContent = 'FOCO PERDIDO — RELOAD EM 300ms';
+            log('⚠ Foco perdido → recarregando página', 'blur');
+            setTimeout(() => {
+                sessionStorage.setItem('focusCounter', '0');
+                location.reload();
+            }, 300);
+        });
+
+        window.addEventListener('focus', () => {
+            statusEl.className = 'status focused';
+            statusEl.textContent = 'FOCO ATIVO';
+            log('✓ Foco retomado', 'focus');
+        });
+    </script>
+</body>
+</html>
