@@ -67,6 +67,21 @@ Name: "portuguese"; MessagesFile: "compiler:Languages\BrazilianPortuguese.isl"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 Name: "startupicon"; Description: "Iniciar o Ghost com o Windows"; GroupDescription: "Opções:"; Flags: unchecked
 
+; ------------------------------------------------------------
+;  InstallDelete — wipe old install artifacts BEFORE extracting new ones.
+;  Why: auto-updates in silent mode sometimes leave orphaned / mismatched
+;  DLLs (e.g. libsndfile) when a file was locked at replace time. Those
+;  stale bytes caused 'Ghost.exe started but froze / not responding'
+;  reports from users on v1.0.10 and earlier. Nuking the _internal tree
+;  guarantees a clean slate every install.
+; ------------------------------------------------------------
+[InstallDelete]
+Type: filesandordirs; Name: "{app}\_internal"
+Type: files;          Name: "{app}\*.exe"
+Type: files;          Name: "{app}\*.dll"
+Type: files;          Name: "{app}\*.pyd"
+Type: files;          Name: "{app}\*.manifest"
+
 [Files]
 ; Pull the entire PyInstaller onedir output.
 Source: "..\..\dist\Ghost\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
@@ -93,6 +108,25 @@ Filename: "{app}\{#AppExeName}"; Flags: nowait runasoriginaluser; Check: WizardS
 ;  e.g. C:\Users\<seu-usuario>\.ghost
 ; ------------------------------------------------------------
 [Code]
+// Forcefully terminate any running Ghost / WebView2 processes BEFORE Inno
+// Setup tries to replace files. /CLOSEAPPLICATIONS alone isn't enough when
+// msedgewebview2.exe children hold DLL handles — those linger a moment
+// after the main Ghost.exe exits, so we wipe the tree ourselves.
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+var
+  ResultCode: Integer;
+begin
+  NeedsRestart := False;
+  // /T = tree, /F = force. Errors are ignored (ResultCode unused).
+  Exec('taskkill.exe', '/F /T /IM Ghost.exe',
+       '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  Exec('taskkill.exe', '/F /T /IM msedgewebview2.exe',
+       '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  // Give Windows a beat to release any lingering file handles.
+  Sleep(500);
+  Result := '';
+end;
+
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
   DataPath: string;
