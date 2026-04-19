@@ -308,72 +308,142 @@ class GhostAPI:
 
             # ---------- launch installer + self-exit ----------
             #
-            # Why so ceremonial: in silent mode the installer races the running
-            # Ghost for file handles. libsndfile_x64.dll stays LOCKED by our
-            # msedgewebview2.exe children until they die, and Inno Setup would
-            # otherwise schedule replace-on-reboot, leaving Ghost with a mismatched
-            # mix of old + new DLLs ('cannot load library libsndfile.dll: 0x7e').
+            # Architecture lessons learned the hard way:
             #
-            # Strategy: spawn a HIDDEN PowerShell that sleeps 3s then launches the
-            # installer. We previously used `cmd /c timeout /t 3 && installer`,
-            # but `timeout` requires a console — under DETACHED_PROCESS there's no
-            # console, so timeout fails silently, the `&&` short-circuits, and the
-            # installer never runs. PowerShell's Start-Sleep works without a
-            # console, and -WindowStyle Hidden reliably hides the PS window.
+            # 1. `cmd /c timeout /t 3 && installer` FAILS silently when spawned
+            #    with DETACHED_PROCESS: timeout needs a console, it fails,
+            #    `&&` short-circuits, installer never runs.
             #
-            # Right after spawning, we taskkill /T our whole tree so by the time
-            # PowerShell wakes up (3s later) and starts the installer, every file
-            # handle we held is released.
+            # 2. `taskkill /F /T /PID <self>` (tree kill) KILLS the PowerShell
+            #    helper because PS is a direct descendant of our Python. So the
+            #    3s delay never completes — installer never launches.
+            #
+            # 3. `-WindowStyle Hidden` passed to Start-Process inside the PS
+            #    helper HIDES the installer's own UI window. User sees nothing,
+            #    and in some cases Inno Setup fails to run at all because
+            #    /SILENT still needs a visible progress dialog.
+            #
+            # Correct approach:
+            #   a) Kill WebView2 helper processes BY NAME (not tree), so they
+            #      release the UserData folder + libsndfile_x64.dll.
+            #   b) Sleep ~1s for OS to release file handles.
+            #   c) Spawn PowerShell helper detached — PS window itself stays
+            #      hidden, but it launches the installer in NORMAL window mode
+            #      so the user sees the Inno Setup progress dialog.
+            #   d) Log every step to ~/.ghost/updater.log so failures are
+            #      diagnosable next time.
+            #   e) `os._exit(0)` WITHOUT `taskkill /T` — our Python dies cleanly
+            #      (releasing the mutex + our DLL handles), PS survives as an
+            #      orphan, completes its 2s delay, launches installer, installer
+            #      /RESTARTAPPLICATIONS relaunches Ghost.
             if sys.platform == "win32":
                 if not target.exists() or target.stat().st_size < 1024:
                     return {"error": f"installer download failed or truncated: {target}"}
 
-                pid = os.getpid()
-                DETACHED_PROCESS = 0x00000008
+                import datetime as _dt
+                updater_log = Path.home() / ".ghost" / "updater.log"
+                updater_log.parent.mkdir(parents=True, exist_ok=True)
+
+                def _ulog(msg: str):
+                    try:
+                        with open(updater_log, "a", encoding="utf-8") as f:
+                            f.write(f"[{_dt.datetime.now().isoformat()}] {msg}\n")
+                    except Exception:
+                        pass
+
+                _ulog("=" * 60)
+                _ulog(f"update start: target={target}, size={target.stat().st_size}")
+
+                # NOTE: do NOT pass DETACHED_PROCESS when spawning PowerShell.
+                # Combined with CREATE_NO_WINDOW it causes PowerShell to fail
+                # silently (PS starts but immediately exits, never running our
+                # script). Tested: with DETACHED_PROCESS | CREATE_NO_WINDOW,
+                # logs never get written; without DETACHED_PROCESS they do.
+                # PS doesn't need DETACHED_PROCESS to survive our exit — it
+                # just needs to not be in our process tree for taskkill, and
+                # since we no longer call taskkill /T, plain Popen suffices.
                 CREATE_NEW_PROCESS_GROUP = 0x00000200
                 CREATE_NO_WINDOW = 0x08000000
-                # PowerShell command: sleep then Start-Process the installer
-                # with the silent-upgrade flags. Start-Process -WindowStyle
-                # Hidden launches the installer without briefly flashing a
-                # window (Inno Setup respects /SILENT but sometimes still
-                # creates a hidden progress window during extraction).
+                helper_flags = CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW
+
+                # (a) Kill WebView2 helpers globally by name — not tree — so our
+                #     PowerShell child survives. Ghost is the only known user of
+                #     WebView2 at this install; killing by name is safe.
+                for image in ("msedgewebview2.exe", "WebView2Host.exe"):
+                    try:
+                        result = subprocess.run(
+                            ["taskkill", "/F", "/IM", image],
+                            capture_output=True, timeout=4,
+                            creationflags=CREATE_NO_WINDOW,
+                        )
+                        _ulog(f"taskkill {image}: rc={result.returncode}")
+                    except Exception as e:
+                        _ulog(f"taskkill {image} error: {e}")
+
+                # (b) Brief pause for OS to release file handles the webview had
+                time.sleep(0.8)
+
+                # (c) PowerShell helper: short delay then launch installer with
+                #     visible progress window. NO -WindowStyle Hidden on the
+                #     installer — user sees the Inno Setup progress dialog.
+                helper_log = str(updater_log).replace("'", "''")
+                installer_path = str(target).replace("'", "''")
                 ps_script = (
-                    "Start-Sleep -Seconds 3; "
-                    f"Start-Process -FilePath '{target}' "
-                    "-ArgumentList '/SILENT','/CLOSEAPPLICATIONS',"
-                    "'/FORCECLOSEAPPLICATIONS','/RESTARTAPPLICATIONS' "
-                    "-WindowStyle Hidden"
+                    "$ErrorActionPreference='Continue'; "
+                    f"'[ps] waking after sleep' | Out-File -FilePath '{helper_log}' -Append -Encoding utf8; "
+                    "Start-Sleep -Seconds 2; "
+                    "try { "
+                    f"  $p = Start-Process -FilePath '{installer_path}' "
+                    "   -ArgumentList '/SILENT','/CLOSEAPPLICATIONS',"
+                    "   '/FORCECLOSEAPPLICATIONS','/RESTARTAPPLICATIONS' "
+                    "   -PassThru -ErrorAction Stop; "
+                    f"  \"[ps] installer launched pid=$($p.Id)\" | Out-File -FilePath '{helper_log}' -Append -Encoding utf8; "
+                    "} catch { "
+                    f"  \"[ps] FAILED: $($_.Exception.Message)\" | Out-File -FilePath '{helper_log}' -Append -Encoding utf8; "
+                    "}"
                 )
+
                 try:
-                    subprocess.Popen(
-                        ["powershell.exe", "-NoProfile", "-WindowStyle", "Hidden",
-                         "-ExecutionPolicy", "Bypass", "-Command", ps_script],
-                        creationflags=DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW,
+                    ps = subprocess.Popen(
+                        ["powershell.exe", "-NoProfile", "-NonInteractive",
+                         "-WindowStyle", "Hidden", "-ExecutionPolicy", "Bypass",
+                         "-Command", ps_script],
+                        creationflags=helper_flags,
                         close_fds=True,
                     )
-                except FileNotFoundError:
-                    # PowerShell missing (extremely rare on Win10+). Fallback:
-                    # spawn the installer directly without the 3s wait. Some DLLs
-                    # may get replaced on reboot, but at least the update runs.
+                    _ulog(f"powershell spawned: pid={ps.pid}")
+                except FileNotFoundError as e:
+                    _ulog(f"powershell not found: {e} — falling back to direct launch")
+                    # Fallback: spawn installer directly; it'll race us a bit
+                    # but Inno Setup's /CLOSEAPPLICATIONS handles our process.
                     subprocess.Popen(
                         [str(target), "/SILENT", "/CLOSEAPPLICATIONS",
                          "/FORCECLOSEAPPLICATIONS", "/RESTARTAPPLICATIONS"],
-                        creationflags=DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW,
+                        creationflags=helper_flags,
                         close_fds=True,
                     )
 
-                # Force-kill our whole process tree NOW so the installer (which
-                # starts in 3s) finds no locked files:
-                #   - this python.exe (pid)
-                #   - all msedgewebview2.exe children (/T = tree)
+                # (d) Destroy webview windows before exit so the main window's
+                #     UserData can be flushed cleanly.
                 try:
-                    subprocess.run(
-                        ["taskkill", "/F", "/T", "/PID", str(pid)],
-                        capture_output=True, timeout=3,
-                    )
+                    import webview as _webview
+                    for w in list(_webview.windows):
+                        try: w.destroy()
+                        except Exception: pass
                 except Exception:
                     pass
-                os._exit(0)
+
+                # (e) Exit self WITHOUT /T — PowerShell must survive to launch
+                #     the installer. Our exit releases the mutex and all file
+                #     handles (including libsndfile). Schedule via Timer so the
+                #     IPC response to `download_and_install_update` returns OK
+                #     first; otherwise the webview sees the bridge tear down
+                #     before the promise resolves.
+                _ulog("self-exit scheduled in 300ms")
+                def _exit():
+                    _ulog("os._exit(0)")
+                    os._exit(0)
+                threading.Timer(0.3, _exit).start()
             else:
                 # macOS: `open` sends the pkg to Installer.app.
                 subprocess.Popen(["open", str(target)])
