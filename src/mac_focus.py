@@ -61,8 +61,10 @@ if sys.platform == "darwin":
     _SHARING_NONE = 0
     _SHARING_READ_ONLY = 1
 
-    def _ghost_windows(match: str = "Ghost"):  # pragma: no cover - mac only
-        """Return every NSWindow whose title contains `match`."""
+    def _ghost_windows(match: str = "Ghost", exact: bool = True):  # pragma: no cover - mac only
+        """Return matching NSWindows. `exact=True` (default) does string equality
+        so match='Ghost' picks ONLY the main window (not 'Ghost Response' popup).
+        Use `exact=False` to match by substring."""
         try:
             app = NSApplication.sharedApplication()
         except Exception:
@@ -70,15 +72,18 @@ if sys.platform == "darwin":
         out = []
         for w in app.windows():
             try:
-                if match in str(w.title()):
-                    out.append(w)
+                title = str(w.title())
             except Exception:
                 continue
+            if (exact and title == match) or (not exact and match in title):
+                out.append(w)
         return out
 
     def _hide_from_capture(_handle=None, enabled: bool = True) -> bool:  # pragma: no cover
-        """Cross-process screen-share invisibility (setSharingType:)."""
-        wins = _ghost_windows()
+        """Cross-process screen-share invisibility (setSharingType:).
+        Applies to every Ghost window (main + response popup), so we use
+        substring matching (exact=False)."""
+        wins = _ghost_windows(exact=False)
         sharing = _SHARING_NONE if enabled else _SHARING_READ_ONLY
         ok = False
         for w in wins:
@@ -127,8 +132,9 @@ if sys.platform == "darwin":
         return False
 
     def _make_non_activating(_handle=None) -> None:  # pragma: no cover
-        """On Mac, we keep Ghost floating above regular windows without stealing focus."""
-        for w in _ghost_windows():
+        """Keep Ghost floating above regular windows without stealing focus.
+        Applies to every Ghost window (main + popup)."""
+        for w in _ghost_windows(exact=False):
             try:
                 w.setLevel_(NSFloatingWindowLevel)
             except Exception:
