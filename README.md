@@ -9,7 +9,7 @@
   <a href="https://github.com/userJesus/ghost/releases"><img src="https://img.shields.io/github/downloads/userJesus/ghost/total?style=for-the-badge&color=3CB895"/></a>
   <a href="#-licença"><img src="https://img.shields.io/badge/license-NCSAL%20v1.0-CC3B50?style=for-the-badge"/></a>
   <a href="#-instalação"><img src="https://img.shields.io/badge/Windows-10%2F11-0078D4?style=for-the-badge&logo=windows11&logoColor=white"/></a>
-  <a href="#-instalação"><img src="https://img.shields.io/badge/macOS-11%2B-000000?style=for-the-badge&logo=apple&logoColor=white"/></a>
+  <a href="#-instalação"><img src="https://img.shields.io/badge/macOS-em%20breve-9E9E9E?style=for-the-badge&logo=apple&logoColor=white"/></a>
 </p>
 
 <h1 align="center">👻 Ghost</h1>
@@ -32,10 +32,8 @@
   <br/><sub>Windows 10 / 11 · 89 MB · sem UAC / sem admin</sub>
 </td>
 <td align="center" width="420">
-  <a href="https://github.com/userJesus/ghost/releases/latest/download/Ghost.dmg">
-    <img src="https://img.shields.io/badge/Baixar%20para%20macOS-.dmg-000000?style=for-the-badge&logo=apple&logoColor=white" alt="macOS installer"/>
-  </a>
-  <br/><sub>macOS 11+ · inclui driver BlackHole 2ch · Apple Silicon + Intel</sub>
+  <img src="https://img.shields.io/badge/macOS-em%20breve-9E9E9E?style=for-the-badge&logo=apple&logoColor=white" alt="macOS em breve"/>
+  <br/><sub>Port em desenvolvimento · <a href="https://github.com/userJesus/ghost/issues">acompanhe aqui</a></sub>
 </td>
 </tr>
 </table>
@@ -56,7 +54,7 @@
 <td width="50%" valign="top">
 
 ### 🫥 Invisível em screen-share
-Liga a flag `WDA_EXCLUDEFROMCAPTURE` do Windows (e o equivalente no macOS) — Zoom, Teams, Meet, OBS e Loom simplesmente **não enxergam** a janela do Ghost, nem durante gravação.
+Liga a flag `WDA_EXCLUDEFROMCAPTURE` do Windows — Zoom, Teams, Meet, OBS e Loom simplesmente **não enxergam** a janela do Ghost, nem durante gravação.
 
 </td>
 <td width="50%" valign="top">
@@ -70,7 +68,7 @@ Captura a tela inteira, uma janela ou uma região. A IA "olha" o print e respond
 <td width="50%" valign="top">
 
 ### 🎙️ Transcreve reuniões
-Captura mic + áudio do sistema ao mesmo tempo (Stereo Mix no Windows / **BlackHole 2ch** no Mac, instalado junto) e gera transcrições contínuas em background.
+Captura mic + áudio do sistema ao mesmo tempo (Stereo Mix / WASAPI loopback no Windows) e gera transcrições contínuas em background.
 
 </td>
 <td width="50%" valign="top">
@@ -131,62 +129,12 @@ O SmartScreen lembra dessa autorização — na próxima vez que você abrir o m
 </details>
 
 <details>
-<summary><strong>🍏 macOS</strong> — clique para expandir</summary>
+<summary><strong>🍏 macOS</strong> — em breve</summary>
 
-1. [**Baixe o DMG**](https://github.com/userJesus/ghost/releases/latest/download/Ghost.dmg)
-2. Abra o `.dmg` → **clique com o botão direito** em `Ghost Installer.pkg` → **Abrir** → **Abrir** na janela de confirmação
-   > ⚠️ Se der duplo-clique direto, o macOS bloqueia com _"desenvolvedor não identificado"_ (Gatekeeper). O Ghost ainda não é assinado com Apple Developer ID — [veja abaixo](#-aviso-de-gatekeeper-desenvolvedor-não-identificado) se cair nesse aviso.
-3. No passo "Personalizar":
-   - ✅ **Ghost.app** (obrigatório)
-   - ✅ **BlackHole 2ch** (recomendado — driver virtual de áudio para reuniões)
-4. Conceda as permissões quando o macOS pedir:
-   - 🎙️ Microfone
-   - 🖥️ Gravação de tela
-5. Abra o Ghost pelo Launchpad → cole sua chave da OpenAI
-
-Para desinstalar depois: o DMG traz um `uninstall_mac.sh` que pergunta se quer apagar os dados + remover o BlackHole.
-
-##### 🛡️ Aviso de Gatekeeper ("desenvolvedor não identificado")
-
-O macOS mostra esse aviso em **qualquer** app que não foi notarizado pela Apple. Notarização exige conta Apple Developer paga ($99/ano), e o Ghost é distribuído gratuitamente sob licença não-comercial — a conta Apple não está nos planos. O instalador é **auditável**: você pode inspecionar todo o código-fonte neste repo, conferir o `SHA256SUMS.txt` do release, e reconstruir localmente com `scripts/build_mac.sh`.
-
-Escolha uma das opções abaixo (da mais segura para a mais ampla):
-
-**Opção 1 — Clique direito → Abrir** (recomendada, por-app)
-
-Em vez de duplo-clique, clique com o botão direito (ou Control+clique) em `Ghost Installer.pkg` → **Abrir**. O macOS mostra uma janela com um botão **Abrir** que autoriza **só este arquivo**. Mesma coisa para abrir o `.dmg` e depois o `Ghost.app`.
-
-**Opção 2 — System Settings → Privacy & Security** (também por-app)
-
-Tenta abrir o `.pkg` por duplo-clique → macOS bloqueia → abra **Ajustes do Sistema → Privacidade e Segurança** → role até o fim. Vai aparecer "Ghost Installer.pkg foi bloqueado" com um botão **Abrir Mesmo Assim / Open Anyway**. Clique.
-
-**Opção 3 — Remover a flag de quarentena via Terminal** (por-app, permanente)
-
-```bash
-sudo xattr -rd com.apple.quarantine ~/Downloads/Ghost.dmg
-# depois de instalar:
-sudo xattr -rd com.apple.quarantine /Applications/Ghost.app
-```
-
-Remove o atributo `com.apple.quarantine` só para esse arquivo — o Gatekeeper para de monitorá-lo. Usado por várias distribuições open-source.
-
-**Opção 4 — Habilitar "Qualquer origem" no sistema inteiro** (⚠️ amplo, menos seguro)
-
-Até o macOS Sierra existia uma opção "Qualquer origem / Anywhere" em Privacidade e Segurança. Apple removeu da UI, mas ela ainda funciona via Terminal:
-
-```bash
-sudo spctl --master-disable
-```
-
-Isso **desativa o Gatekeeper para todo o sistema** (qualquer app não-notarizado roda sem aviso). Só faça se tiver certeza do que está fazendo. Para reverter:
-
-```bash
-sudo spctl --master-enable
-```
-
-O status atual pode ser checado com `spctl --status`.
-
-> ℹ️ **Nossa recomendação**: use a Opção 1 ou 2. Autorizam apenas o Ghost, preservando a proteção do Gatekeeper para outros apps.
+O port para macOS está em desenvolvimento. Acompanhe o progresso nas
+[issues](https://github.com/userJesus/ghost/issues) ou observe a aba
+[Releases](https://github.com/userJesus/ghost/releases) para quando
+o primeiro `.dmg` for publicado.
 
 </details>
 
@@ -195,7 +143,6 @@ O status atual pode ser checado com `spctl --status`.
 <table align="center">
 <tr><th>Atalho</th><th>O que faz</th></tr>
 <tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>G</kbd></td><td>Abre / foca o Ghost de qualquer lugar</td></tr>
-<tr><td><kbd>⌘</kbd>+<kbd>Shift</kbd>+<kbd>G</kbd></td><td>Idem, no macOS</td></tr>
 <tr><td>Botão <strong>→</strong> do app</td><td>"Encolher para o canto" — vira um ícone 56×56 na borda da tela</td></tr>
 <tr><td>Click no ícone docked</td><td>Restaura o app inteiro</td></tr>
 </table>
@@ -241,9 +188,8 @@ A identidade visual nasceu do próprio modo docked — um ícone verde-menta que
 | SO       | Como desinstalar                                  | Onde ficam seus dados    |
 |----------|---------------------------------------------------|--------------------------|
 | 🪟 Windows | **Configurações → Apps** → Ghost → Desinstalar     | `C:\Users\<você>\.ghost` |
-| 🍏 macOS   | Abra o DMG → duplo-clique em `uninstall_mac.sh`    | `~/.ghost`               |
 
-Em ambos os casos o desinstalador **pergunta se você quer apagar os dados** (logs, configurações, histórico, chave da OpenAI) ou **mantê-los**. Se reinstalar depois mantendo os dados, seu histórico volta como se nada tivesse acontecido.
+O desinstalador **pergunta se você quer apagar os dados** (logs, configurações, histórico, chave da OpenAI) ou **mantê-los**. Se reinstalar depois mantendo os dados, seu histórico volta como se nada tivesse acontecido.
 
 ---
 
@@ -287,7 +233,7 @@ Para licenciamento comercial, fale com o autor ↓
 Pull requests bem-vindas, contanto que respeitem a licença não-comercial.
 Veja [CONTRIBUTING.md](CONTRIBUTING.md) e [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
 
-Build local a partir do código-fonte: [`scripts/build_windows.bat`](scripts/build_windows.bat) ou [`scripts/build_mac.sh`](scripts/build_mac.sh). A versão é lida de [`src/version.py`](src/version.py) — única fonte de verdade para todos os instaladores.
+Build local a partir do código-fonte: [`scripts/build_windows.bat`](scripts/build_windows.bat) (macOS em breve). A versão é lida de [`src/version.py`](src/version.py) — única fonte de verdade para o instalador.
 
 ---
 

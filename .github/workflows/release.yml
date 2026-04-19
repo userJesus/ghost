@@ -65,47 +65,16 @@ jobs:
           path: installer/windows/Output/GhostSetup-*.exe
 
   # -----------------------------------------------------------------
-  # macOS — PyInstaller + productbuild + BlackHole → Ghost-<version>.dmg
+  # macOS — port planned; currently not shipped. See README roadmap.
   # -----------------------------------------------------------------
-  build-macos:
-    name: Build macOS installer
-    runs-on: macos-14
-    timeout-minutes: 30
-    continue-on-error: true   # never block the Windows release on Mac build failures
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Python 3.12
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r dev-requirements.txt
-          pip install Pillow "svg.path" pyinstaller
-
-      - name: Build macOS installer (.pkg + .dmg)
-        run: bash installer/macos/build_pkg.sh
-
-      - name: Upload macOS artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ghost-macos
-          path: |
-            installer/macos/Output/Ghost-*.dmg
-            installer/macos/Output/GhostInstaller-*.pkg
+  # (no build-macos job)
 
   # -----------------------------------------------------------------
-  # RELEASE — attach both installers to the GitHub release
+  # RELEASE — attach the Windows installer to the GitHub release
   # -----------------------------------------------------------------
   release:
     name: Publish GitHub release
-    needs: [build-windows, build-macos]
-    # Always publish when Windows succeeds — Mac is optional/best-effort.
-    if: always() && needs.build-windows.result == 'success'
+    needs: [build-windows]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -115,28 +84,12 @@ jobs:
           name: ghost-windows
           path: dist
 
-      - name: Download macOS artifact (if built)
-        uses: actions/download-artifact@v4
-        continue-on-error: true
-        with:
-          name: ghost-macos
-          path: dist
-
-      - name: Create version-less aliases (stable /releases/latest/download URLs)
-        # Copies each versioned installer to a generic name so download links in the
-        # README never break between releases. Uses `shopt -s nullglob` so a missing
-        # pattern (e.g. no Mac artifact when build-macos failed) doesn't abort the
-        # step under `set -e`.
+      - name: Create version-less alias (stable /releases/latest/download/GhostSetup.exe URL)
         shell: bash
         run: |
-          set +e
           cd dist
-          ls -la
           shopt -s nullglob
-          for f in GhostSetup-*.exe;       do cp "$f" GhostSetup.exe;       done
-          for f in Ghost-*.dmg;            do cp "$f" Ghost.dmg;            done
-          for f in GhostInstaller-*.pkg;   do cp "$f" GhostInstaller.pkg;   done
-          exit 0
+          for f in GhostSetup-*.exe; do cp "$f" GhostSetup.exe; done
 
       - name: Generate SHA256 checksums
         run: |
@@ -149,20 +102,16 @@ jobs:
           files: |
             dist/GhostSetup-*.exe
             dist/GhostSetup.exe
-            dist/Ghost-*.dmg
-            dist/Ghost.dmg
-            dist/GhostInstaller-*.pkg
-            dist/GhostInstaller.pkg
             dist/SHA256SUMS.txt
           generate_release_notes: true
           draft: false
           body: |
-            ## 📦 Downloads
+            ## 📦 Download
 
-            | Platform | File | Size |
+            | Platform | File | |
             |----------|------|------|
-            | 🪟 Windows 10/11 | `GhostSetup-*.exe` | installer without admin |
-            | 🍏 macOS 11+     | `Ghost-*.dmg`      | installer pkg + uninstaller |
+            | 🪟 Windows 10/11 | [`GhostSetup.exe`](https://github.com/userJesus/ghost/releases/latest/download/GhostSetup.exe) | instala sem admin |
+            | 🍏 macOS         | _em breve (port em andamento)_ | |
 
             Verifique a integridade com `SHA256SUMS.txt`.
 

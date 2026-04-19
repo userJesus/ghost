@@ -5,31 +5,24 @@ import time
 from pathlib import Path
 
 import webview
-
-if sys.platform == "win32":
-    import win32gui
-    import win32process
-    from src.win_focus import (
-        hide_from_capture,
-        hide_from_taskbar,
-        hide_window,
-        is_window_visible,
-        make_non_activating,
-        show_window,
-    )
-else:
-    win32gui = None  # type: ignore[assignment]
-    win32process = None  # type: ignore[assignment]
-    from src.mac_focus import (
-        hide_from_capture,
-        hide_from_taskbar,
-        hide_window,
-        is_window_visible,
-        make_non_activating,
-        show_window,
-    )
+import win32gui
+import win32process
 
 from src.api import GhostAPI
+from src.win_focus import (
+    hide_from_capture,
+    hide_from_taskbar,
+    hide_window,
+    is_window_visible,
+    make_non_activating,
+    show_window,
+)
+
+if sys.platform != "win32":
+    raise RuntimeError(
+        "Ghost currently ships for Windows only. A macOS port is planned — "
+        "see the roadmap in README.md."
+    )
 
 # User-data folder — same across platforms, matches history.py/logging_config.py/config.py.
 # Windows resolves ~ to %USERPROFILE% (e.g. C:\Users\<user>\.ghost).
@@ -45,7 +38,6 @@ else:
     LOG_FILE = ROOT / "ghost.log"
 WEB_INDEX = ROOT / "web" / "index.html"
 WEB_RESPONSE = ROOT / "web" / "response.html"
-WEB_DROPDOWN = ROOT / "web" / "dropdown.html"
 
 
 def _find_own_top_window() -> int:
@@ -130,10 +122,9 @@ def _apply_response_popup_tweaks(api: GhostAPI):
         pid = _os.getpid()
         main_hwnd = api._hwnd
         response_hwnd = 0
-        dropdown_hwnd = 0
 
         def cb(hwnd, _):
-            nonlocal response_hwnd, dropdown_hwnd
+            nonlocal response_hwnd
             try:
                 _, wpid = win32process.GetWindowThreadProcessId(hwnd)
                 if wpid != pid or hwnd == main_hwnd:
@@ -141,26 +132,19 @@ def _apply_response_popup_tweaks(api: GhostAPI):
                 title = win32gui.GetWindowText(hwnd)
                 if "Response" in title:
                     response_hwnd = hwnd
-                elif "Dropdown" in title:
-                    dropdown_hwnd = hwnd
             except Exception:
                 pass
             return True
 
         win32gui.EnumWindows(cb, None)
-        for label, hwnd, setter in (
-            ("response", response_hwnd, api.set_response_hwnd),
-            ("dropdown", dropdown_hwnd, api.set_dropdown_hwnd),
-        ):
-            if not hwnd:
-                continue
+        if response_hwnd:
             try:
-                setter(hwnd)
-                hide_from_capture(hwnd, True)
-                hide_from_taskbar(hwnd)
-                print(f"[init] {label} HWND={hwnd}", flush=True)
+                api.set_response_hwnd(response_hwnd)
+                hide_from_capture(response_hwnd, True)
+                hide_from_taskbar(response_hwnd)
+                print(f"[init] response HWND={response_hwnd}", flush=True)
             except Exception as e:
-                print(f"[warn] {label} popup protect: {e}", flush=True)
+                print(f"[warn] response popup protect: {e}", flush=True)
     except Exception as e:
         print(f"[warn] popup tweak error: {e}", flush=True)
 
@@ -272,8 +256,7 @@ def main():
         pass
 
     api = GhostAPI()
-    if sys.platform == "win32":
-        _watch_show_event_windows(lambda: api._hwnd)
+    _watch_show_event_windows(lambda: api._hwnd)
 
     # Placeholder values; real centering is done via Win32 after the window exists
     init_w, init_h = 580, 720
@@ -315,85 +298,12 @@ def main():
     )
     api.set_response_window(response_win)
 
-    # Pre-create the floating dropdown popup (third window). Used by the chip
-    # dropdowns in compact mode so options render outside the compact bar's
-    # bounds, true floating overlay like native OS menus. Same invisibility +
-    # off-screen park treatment as the response popup.
-    dropdown_win = webview.create_window(
-        "Ghost Dropdown",
-        str(WEB_DROPDOWN),
-        js_api=api,
-        width=240,
-        height=300,
-        x=-10000,
-        y=-10000,
-        frameless=True,
-        on_top=True,
-        resizable=False,
-        hidden=True,
-        background_color="#1C1C1C",
-    )
-    api.set_dropdown_window(dropdown_win)
-
-    if sys.platform == "win32":
-        threading.Thread(target=_apply_window_tweaks,
-                         args=(api, init_x, init_y, init_w, init_h),
-                         daemon=True).start()
-    else:
-        threading.Thread(target=_apply_mac_tweaks, args=(api,), daemon=True).start()
+    threading.Thread(target=_apply_window_tweaks,
+                     args=(api, init_x, init_y, init_w, init_h),
+                     daemon=True).start()
 
     debug_mode = "--debug" in sys.argv
-    webview.start(debug=debug_mode, gui="edgechromium" if sys.platform == "win32" else None)
-
-
-def _apply_mac_tweaks(api: GhostAPI):
-    """macOS equivalent of _apply_window_tweaks — polls for the NSWindow and
-    applies setSharingType:NSWindowSharingNone (invisible in screen-share),
-    non-activating floating level, and hide-from-Dock accessory policy."""
-    # Give pywebview ~2s to create the NSWindow.
-    for _ in range(40):
-        time.sleep(0.1)
-        try:
-            from src.mac_focus import is_window_visible as _mac_visible
-            if _mac_visible():
-                break
-        except Exception:
-            pass
-    try:
-        print(f"[init] mac hide_from_capture={hide_from_capture(None, True)}", flush=True)
-        print(f"[init] mac hide_from_taskbar={hide_from_taskbar(None)}", flush=True)
-        make_non_activating(None)
-        print("[init] mac NSFloatingWindowLevel applied", flush=True)
-    except Exception as e:
-        print(f"[init] mac tweaks failed: {e}", flush=True)
-
-    _register_mac_hotkey(api)
-
-
-def _register_mac_hotkey(api: GhostAPI):
-    """Cmd+Shift+G toggles Ghost visibility on macOS (pynput is cross-platform)."""
-    try:
-        from pynput import keyboard
-    except Exception as e:
-        print(f"[warn] pynput unavailable on mac: {e}", flush=True)
-        return
-
-    def toggle():
-        if is_window_visible(None):
-            hide_window(None)
-        else:
-            show_window(None)
-
-    def runner():
-        try:
-            with keyboard.GlobalHotKeys({"<cmd>+<shift>+g": toggle}) as h:
-                h.join()
-        except Exception as e:
-            print(f"[warn] mac hotkey runner died: {e}", flush=True)
-
-    t = threading.Thread(target=runner, daemon=True)
-    t.start()
-    print("[init] mac global hotkey registered: Cmd+Shift+G", flush=True)
+    webview.start(debug=debug_mode, gui="edgechromium")
 
 
 if __name__ == "__main__":

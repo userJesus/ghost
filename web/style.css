@@ -1290,12 +1290,16 @@ input, textarea, button, select {
     /* Usa scrollbar global */
 }
 
-/* Compact mode: chips ficam no TOPO da barra (200px), sem espaço pra cima.
-   Invertemos a abertura para BAIXO para o flyout caber na viewport. */
+/* Compact mode: o composer usa column-reverse (input encima, chips ao
+   lado do rodapé da barra). Flyout abre PARA CIMA do chip (default:
+   bottom: calc(100% + 6px)) — cabe inteiro no espaço acima porque os
+   chips ficam no final da barra. max-height clampa à viewport. */
+.app.compact > .composer {
+    flex-direction: column-reverse;
+}
 .app.compact .chip-flyout {
-    bottom: auto;
-    top: calc(100% + 6px);
-    max-height: calc(100vh - 56px);
+    /* Mantém 'bottom: calc(100% + 6px)' do base — abre pra cima. */
+    max-height: calc(100vh - 80px);
 }
 .chip-flyout-label {
     font-size: 10.5px;

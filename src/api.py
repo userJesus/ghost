@@ -22,33 +22,12 @@ from .meeting_processor import (
 )
 from .scroll_capture import capture_monitor, list_monitors, scroll_and_capture, stitch_vertical
 from .voice import VoiceRecorder
-if sys.platform == "win32":
-    from .win_focus import (
-        drag_window_loop,
-        force_foreground,
-        hide_window,
-    )
-else:
-    # Stubs on non-Windows so the module imports cleanly; these features are
-    # currently Windows-only and the calls happen only from Win-specific paths.
-    def drag_window_loop(*_args, **_kwargs): return False
-    def force_foreground(*_args, **_kwargs): return False
-    def hide_window(*_args, **_kwargs): return False
+from .win_focus import (
+    drag_window_loop,
+    force_foreground,
+    hide_window,
+)
 
-
-_IS_MAC = sys.platform == "darwin"
-
-
-def _mac_screen_for_center() -> "dict | None":
-    """Return the NSScreen (as a Win32-style dict) containing the Ghost window's center,
-    or the primary screen if we can't detect. Returns None only if PyObjC is unavailable."""
-    if not _IS_MAC:
-        return None
-    try:
-        from . import mac_focus
-        return mac_focus.current_screen_for_window()
-    except Exception:
-        return None
 
 MAX_HISTORY = 10
 ROOT = Path(__file__).resolve().parent.parent
@@ -1083,17 +1062,8 @@ class GhostAPI:
 
     def _current_monitor(self) -> dict | None:
         """Return the monitor dict containing the Ghost window's center.
-        Includes a 'work' tuple (left, top, right, bottom) that excludes the taskbar/menu bar.
+        Includes a 'work' tuple (left, top, right, bottom) that excludes the taskbar.
         """
-        if _IS_MAC:
-            s = _mac_screen_for_center()
-            if s is None:
-                return None
-            return {
-                "left": s["left"], "top": s["top"],
-                "width": s["width"], "height": s["height"],
-                "work": (s["work_left"], s["work_top"], s["work_right"], s["work_bottom"]),
-            }
         if not self._hwnd:
             return None
         try:
@@ -1402,152 +1372,10 @@ class GhostAPI:
             import os
             os._exit(1)
 
-    # =====================================================================
-    # Floating dropdown popup — a third pywebview window that renders chip
-    # options outside the compact bar's bounds, so they never get clipped.
-    # =====================================================================
-    def set_dropdown_window(self, window) -> None:
-        """Called from main.py once the pre-created dropdown popup window exists."""
-        self._dropdown_window = window
-
-    def get_main_window_rect(self) -> dict:
-        """Returns (x, y, width, height) of the main Ghost window in screen
-        coordinates. Used by JS to translate chip viewport-pos -> screen-pos
-        so the dropdown popup can be positioned adjacent to the chip."""
-        try:
-            if _IS_MAC:
-                from . import mac_focus
-                f = mac_focus.get_window_frame()
-                if not f:
-                    return {"error": "no main window"}
-                return {"x": f[0], "y": f[1], "width": f[2], "height": f[3]}
-            import win32gui
-            if not self._hwnd:
-                return {"error": "no hwnd"}
-            l, t, r, b = win32gui.GetWindowRect(self._hwnd)
-            return {"x": l, "y": t, "width": r - l, "height": b - t}
-        except Exception as e:
-            return {"error": _log_error("get_main_window_rect", e)}
-
-    def show_dropdown_popup(
-        self, kind: str, items: list, selected: str | int | None,
-        screen_x: int, screen_y: int, width: int = 240, height: int = 300,
-    ) -> dict:
-        """Show the floating dropdown popup at (screen_x, screen_y) with the
-        given items. `kind` identifies which chip ('preset'|'captureMode'|'monitor')
-        so the selection callback knows where to route the value."""
-        try:
-            if self._dropdown_window is None:
-                return {"error": "dropdown window not pre-created"}
-
-            # Push the items + selected state + kind into the popup page.
-            payload = json.dumps({"kind": kind, "items": items, "selected": selected})
-            try:
-                self._dropdown_window.evaluate_js(f"window.setDropdown({payload})")
-            except Exception:
-                pass
-
-            # Position the window on screen.
-            if _IS_MAC:
-                from . import mac_focus
-                mac_focus.set_window_frame(
-                    int(screen_x), int(screen_y), int(width), int(height),
-                    match="Ghost Dropdown",
-                )
-                try:
-                    self._dropdown_window.show()
-                except Exception:
-                    pass
-            else:
-                import win32gui
-                if self._dropdown_hwnd:
-                    SWP_NOZORDER_LOCAL = 0x0004
-                    SWP_NOACTIVATE_LOCAL = 0x0010
-                    win32gui.SetWindowPos(
-                        self._dropdown_hwnd, 0,
-                        int(screen_x), int(screen_y), int(width), int(height),
-                        SWP_NOZORDER_LOCAL | SWP_NOACTIVATE_LOCAL,
-                    )
-                    import win32con
-                    win32gui.ShowWindow(self._dropdown_hwnd, win32con.SW_SHOWNOACTIVATE)
-                else:
-                    try:
-                        self._dropdown_window.show()
-                    except Exception:
-                        pass
-            return {"ok": True}
-        except Exception as e:
-            return {"error": _log_error("show_dropdown_popup", e)}
-
-    def hide_dropdown_popup(self) -> dict:
-        """Hide the dropdown popup and park it off-screen so no hidden rect
-        shows up as a black rectangle under the capture-excluded flag."""
-        try:
-            if self._dropdown_window is None:
-                return {"ok": True}
-            if _IS_MAC:
-                try:
-                    self._dropdown_window.hide()
-                except Exception:
-                    pass
-                return {"ok": True}
-            if self._dropdown_hwnd:
-                import win32con
-                import win32gui
-                win32gui.ShowWindow(self._dropdown_hwnd, win32con.SW_HIDE)
-                SWP_NOSIZE_LOCAL = 0x0001
-                SWP_NOZORDER_LOCAL = 0x0004
-                SWP_NOACTIVATE_LOCAL = 0x0010
-                win32gui.SetWindowPos(
-                    self._dropdown_hwnd, 0, -10000, -10000, 0, 0,
-                    SWP_NOSIZE_LOCAL | SWP_NOZORDER_LOCAL | SWP_NOACTIVATE_LOCAL,
-                )
-            else:
-                try:
-                    self._dropdown_window.hide()
-                except Exception:
-                    pass
-            return {"ok": True}
-        except Exception as e:
-            return {"error": _log_error("hide_dropdown_popup", e)}
-
-    def dropdown_pick(self, kind: str, value: str | int) -> dict:
-        """Called from the dropdown popup's HTML when the user clicks an option.
-        Forwards the selection to the main window and hides the popup."""
-        try:
-            if self._window is not None:
-                code = f"window.applyDropdownResult({json.dumps(kind)}, {json.dumps(value)})"
-                try:
-                    self._window.evaluate_js(code)
-                except Exception:
-                    pass
-            self.hide_dropdown_popup()
-            return {"ok": True}
-        except Exception as e:
-            return {"error": _log_error("dropdown_pick", e)}
-
-    def set_dropdown_hwnd(self, hwnd: int) -> None:
-        """Called from main.py once the dropdown popup's HWND is resolved."""
-        self._dropdown_hwnd = int(hwnd)
-
     def minimize_to_edge(self) -> dict:
-        """Shrink window to a 56×56 icon docked on the right edge of the current screen/monitor."""
+        """Shrink window to a 56×56 icon docked on the right edge of the current monitor."""
         try:
             icon_size = 56
-
-            # ---------- macOS branch ----------
-            if _IS_MAC:
-                from . import mac_focus
-                cur = mac_focus.get_window_frame()
-                if cur is not None:
-                    self._saved_rect = cur  # (x, y, w, h) top-left coords
-                screen = _mac_screen_for_center() or {"left": 0, "top": 0, "width": 1920, "height": 1080}
-                edge_x = screen["left"] + screen["width"] - icon_size
-                edge_y = screen["top"] + (screen["height"] // 2) - (icon_size // 2)
-                mac_focus.set_window_frame(edge_x, edge_y, icon_size, icon_size)
-                return {"ok": True}
-
-            # ---------- Windows branch ----------
             import win32gui
             if not self._hwnd:
                 return {"error": "No HWND"}
@@ -1634,19 +1462,6 @@ class GhostAPI:
             bar_w = 820
             bar_h = 200
 
-            # ---------- macOS branch ----------
-            if _IS_MAC:
-                from . import mac_focus
-                cur = mac_focus.get_window_frame()
-                if cur is not None:
-                    self._saved_rect = cur
-                s = _mac_screen_for_center() or {"work_left": 0, "work_top": 0, "work_right": 1920, "work_bottom": 1080}
-                x = s["work_right"] - bar_w - 12
-                y = s["work_bottom"] - bar_h - 12
-                mac_focus.set_window_frame(int(x), int(y), int(bar_w), int(bar_h))
-                return {"ok": True}
-
-            # ---------- Windows branch ----------
             import win32gui
             if not self._hwnd:
                 return {"error": "No HWND"}
@@ -1703,20 +1518,6 @@ class GhostAPI:
         try:
             self.hide_response_popup()
 
-            # ---------- macOS branch ----------
-            if _IS_MAC:
-                from . import mac_focus
-                if self._saved_rect:
-                    x, y, w, h = self._saved_rect
-                else:
-                    s = _mac_screen_for_center() or {"left": 0, "top": 0, "width": 1920, "height": 1080}
-                    w, h = 580, 720
-                    x = s["left"] + (s["width"] - w) // 2
-                    y = s["top"] + (s["height"] - h) // 2
-                mac_focus.set_window_frame(int(x), int(y), int(w), int(h))
-                return {"ok": True}
-
-            # ---------- Windows branch ----------
             import win32gui
             if not self._hwnd:
                 return {"error": "No HWND"}
@@ -1749,23 +1550,7 @@ class GhostAPI:
 
             # Position at right of current monitor, taking 50% of its height.
             # Width matches the compact bar (820) para alinhar visualmente.
-            if _IS_MAC:
-                # Mac: position the NSWindow titled "Ghost Response" via mac_focus.
-                try:
-                    from . import mac_focus
-                    s = _mac_screen_for_center() or {"left": 0, "top": 0, "width": 1920, "height": 1080}
-                    w = 820
-                    h = s["height"] // 2
-                    x = s["left"] + s["width"] - w - 12
-                    y = s["top"] + 48
-                    mac_focus.set_window_frame(int(x), int(y), int(w), int(h), match="Ghost Response")
-                    mac_focus.show_window()  # orderFront on Ghost windows (includes Response)
-                    if self._response_window is not None:
-                        try: self._response_window.show()
-                        except Exception: pass
-                except Exception as e:
-                    _log_error("popup_position_mac", e)
-            elif self._response_hwnd:
+            if self._response_hwnd:
                 import win32gui
                 monitor = self._current_monitor() or (self._monitors[0] if self._monitors else None)
                 if monitor is None:
@@ -1832,13 +1617,6 @@ class GhostAPI:
         """Hide the response popup AND move it off-screen so its hidden rect
         doesn't render as a black rectangle under WDA_EXCLUDEFROMCAPTURE."""
         try:
-            if _IS_MAC:
-                try:
-                    if self._response_window is not None:
-                        self._response_window.hide()
-                except Exception:
-                    pass
-                return {"ok": True}
             if self._response_hwnd:
                 import win32con
                 import win32gui
@@ -1863,20 +1641,6 @@ class GhostAPI:
     def restore_from_edge(self) -> dict:
         """Restore window to its saved rect before docking."""
         try:
-            # ---------- macOS branch ----------
-            if _IS_MAC:
-                from . import mac_focus
-                if self._saved_rect:
-                    x, y, w, h = self._saved_rect
-                else:
-                    s = _mac_screen_for_center() or {"left": 0, "top": 0, "width": 1920, "height": 1080}
-                    w, h = 580, 720
-                    x = s["left"] + (s["width"] - w) // 2
-                    y = s["top"] + (s["height"] - h) // 2
-                mac_focus.set_window_frame(int(x), int(y), int(w), int(h))
-                return {"ok": True}
-
-            # ---------- Windows branch ----------
             import win32gui
             if not self._hwnd:
                 return {"error": "No HWND"}
@@ -1915,13 +1679,6 @@ class GhostAPI:
 
     def start_window_drag(self):
         try:
-            # ---------- macOS branch ----------
-            if _IS_MAC:
-                from . import mac_focus
-                ok = mac_focus.start_drag()
-                return {"ok": bool(ok)}
-
-            # ---------- Windows branch ----------
             if not self._hwnd:
                 # Try on-demand enumeration as a fallback
                 try:

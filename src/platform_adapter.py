@@ -1,11 +1,11 @@
-"""Camada de abstração de plataforma para o Ghost.
+"""Platform abstraction layer for Ghost (Windows-only for now).
 
-Define uma interface `PlatformAdapter` com as operações específicas de SO
-(esconder da captura, opacidade, hotkey global, etc.) e uma implementação
-concreta `WindowsPlatform`. Port para Mac deve subclassar `PlatformAdapter`
-criando `MacPlatform`.
+Defines `PlatformAdapter` ABC; only `WindowsPlatform` is implemented.
+A macOS port is planned — see the roadmap in README.md. Until then,
+`get_platform()` raises on non-Windows hosts so the app fails loudly
+instead of silently misbehaving.
 
-Uso:
+Usage:
     from src.platform_adapter import get_platform
     plat = get_platform()
     plat.hide_from_capture(hwnd)
@@ -22,7 +22,7 @@ log = get_logger(__name__)
 
 
 class PlatformAdapter(ABC):
-    """Interface mínima que cada SO precisa implementar."""
+    """Minimum interface each OS must implement."""
 
     @abstractmethod
     def hide_from_capture(self, window_handle: int, enabled: bool = True) -> bool: ...
@@ -50,7 +50,7 @@ class PlatformAdapter(ABC):
 
 
 class WindowsPlatform(PlatformAdapter):
-    """Implementação Windows — delega para src.win_focus."""
+    """Windows implementation — delegates to src.win_focus."""
 
     def hide_from_capture(self, window_handle: int, enabled: bool = True) -> bool:
         from . import win_focus
@@ -100,57 +100,20 @@ class WindowsPlatform(PlatformAdapter):
         log.info("global hotkey registered: %s", combo)
 
 
-class MacPlatform(PlatformAdapter):
-    """Stub para futuro port macOS. Todas as operações levantam NotImplementedError."""
-
-    def _unsupported(self) -> None:
-        raise NotImplementedError("Mac port ainda não implementado — veja ROADMAP.md")
-
-    def hide_from_capture(self, window_handle: int, enabled: bool = True) -> bool:
-        self._unsupported()
-        return False
-
-    def set_window_opacity(self, window_handle: int, alpha: float) -> bool:
-        self._unsupported()
-        return False
-
-    def hide_from_taskbar(self, window_handle: int) -> bool:
-        self._unsupported()
-        return False
-
-    def show_window(self, window_handle: int) -> bool:
-        self._unsupported()
-        return False
-
-    def hide_window(self, window_handle: int) -> bool:
-        self._unsupported()
-        return False
-
-    def is_window_visible(self, window_handle: int) -> bool:
-        self._unsupported()
-        return False
-
-    def make_non_activating(self, window_handle: int) -> None:
-        self._unsupported()
-
-    def register_global_hotkey(self, combo: str, callback: Callable[[], None]) -> None:
-        self._unsupported()
-
-
 _INSTANCE: PlatformAdapter | None = None
 
 
 def get_platform() -> PlatformAdapter:
-    """Retorna um singleton da plataforma adequada ao SO atual."""
+    """Return a singleton of the current platform. Only Windows is supported
+    right now — macOS is on the roadmap."""
     global _INSTANCE
     if _INSTANCE is not None:
         return _INSTANCE
-
     if sys.platform == "win32":
         _INSTANCE = WindowsPlatform()
-    elif sys.platform == "darwin":
-        _INSTANCE = MacPlatform()
-    else:
-        raise RuntimeError(f"Plataforma não suportada: {sys.platform}")
-
-    return _INSTANCE
+        return _INSTANCE
+    raise RuntimeError(
+        f"Platform not yet supported: {sys.platform}. "
+        "Ghost currently ships for Windows only; a macOS port is planned. "
+        "See the roadmap in README.md."
+    )

@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ghost"
-version = "1.0.5"
-description = "Ghost — a cross-platform (Windows + macOS) desktop AI assistant built with pywebview, Python, Alpine.js and OpenAI. Non-commercial use only."
+version = "1.0.6"
+description = "Ghost — a Windows desktop AI assistant built with pywebview, Python, Alpine.js and OpenAI. macOS port planned. Non-commercial use only."
 readme = "README.md"
 requires-python = ">=3.12"
 # Custom non-commercial source-available license (see LICENSE file).
@@ -23,18 +23,15 @@ keywords = [
     "pywebview",
     "desktop",
     "windows",
-    "macos",
     "alpine",
     "non-commercial",
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Environment :: Win32 (MS Windows)",
-    "Environment :: MacOS X",
     "Intended Audience :: End Users/Desktop",
     "License :: Other/Proprietary License",
     "Operating System :: Microsoft :: Windows",
-    "Operating System :: MacOS :: MacOS X",
     "Programming Language :: Python :: 3.12",
     "Topic :: Office/Business",
     "Topic :: Utilities",
@@ -47,9 +44,7 @@ dependencies = [
     "pyperclip>=1.9.0,<2",
     "Pillow>=10.4,<14",
     "pyautogui>=0.9.54,<1",
-    "pywin32>=306 ; sys_platform == 'win32'",
-    "pyobjc-core>=10 ; sys_platform == 'darwin'",
-    "pyobjc-framework-Cocoa>=10 ; sys_platform == 'darwin'",
+    "pywin32>=306",
     "soundcard>=0.4.3,<1",
     "soundfile>=0.12.1,<1",
     "numpy>=1.26,<3",
