@@ -1,79 +1,66 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 360" width="1280" height="360" role="img" aria-label="Ghost — desktop AI assistant">
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#0e1f1a"/>
+      <stop offset="0"  stop-color="#0e1f1a"/>
       <stop offset=".55" stop-color="#0a1612"/>
-      <stop offset="1" stop-color="#040807"/>
+      <stop offset="1"  stop-color="#040807"/>
     </linearGradient>
     <linearGradient id="accent" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#61DBB4"/>
       <stop offset="1" stop-color="#3CB895"/>
     </linearGradient>
-    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
-      <stop offset="0" stop-color="#61DBB4" stop-opacity=".35"/>
-      <stop offset="1" stop-color="#61DBB4" stop-opacity="0"/>
-    </radialGradient>
-    <filter id="soft" x="-30%" y="-30%" width="160%" height="160%">
-      <feGaussianBlur stdDeviation="6"/>
-    </filter>
   </defs>
 
   <!-- Background -->
   <rect width="1280" height="360" fill="url(#bg)"/>
 
-  <!-- Twinkle stars (static for performance) -->
+  <!-- Twinkle stars -->
   <g fill="#FDFDFD" opacity=".55">
     <circle cx="120"  cy="60"  r="1.2"><animate attributeName="opacity" values=".2;.9;.2" dur="3.5s" repeatCount="indefinite"/></circle>
     <circle cx="260"  cy="140" r="1.5"><animate attributeName="opacity" values=".3;1;.3"  dur="4.2s" repeatCount="indefinite"/></circle>
     <circle cx="80"   cy="280" r="1"  ><animate attributeName="opacity" values=".1;.7;.1" dur="2.8s" repeatCount="indefinite"/></circle>
-    <circle cx="1100" cy="80"  r="1.5"><animate attributeName="opacity" values=".3;.9;.3" dur="3.1s" repeatCount="indefinite"/></circle>
+    <circle cx="1120" cy="80"  r="1.5"><animate attributeName="opacity" values=".3;.9;.3" dur="3.1s" repeatCount="indefinite"/></circle>
     <circle cx="1190" cy="260" r="1.2"><animate attributeName="opacity" values=".2;.8;.2" dur="3.8s" repeatCount="indefinite"/></circle>
     <circle cx="960"  cy="310" r="1.3"><animate attributeName="opacity" values=".2;.9;.2" dur="2.6s" repeatCount="indefinite"/></circle>
     <circle cx="1000" cy="50"  r="1.2"><animate attributeName="opacity" values=".1;.7;.1" dur="3.4s" repeatCount="indefinite"/></circle>
+    <circle cx="640"  cy="40"  r="1"  ><animate attributeName="opacity" values=".1;.6;.1" dur="3.9s" repeatCount="indefinite"/></circle>
+    <circle cx="700"  cy="320" r="1.2"><animate attributeName="opacity" values=".2;.8;.2" dur="4.1s" repeatCount="indefinite"/></circle>
   </g>
 
-  <!-- Ghost cluster, floats up and down -->
-  <g>
+  <!-- Real "Ghost" wordmark (from assets/logo_ghost.svg), centered.
+       Source viewBox 0 0 894 328.
+       Scale 0.65 → 581×213. Position ~(350, 74). Floats gently up/down. -->
+  <g transform="translate(350 74)">
     <animateTransform attributeName="transform" type="translate"
-      values="0 0; 0 -14; 0 0" keyTimes="0;.5;1" dur="4s" repeatCount="indefinite"/>
-
-    <!-- Glow behind ghost -->
-    <ellipse cx="300" cy="180" rx="200" ry="170" fill="url(#glow)" filter="url(#soft)">
-      <animate attributeName="rx" values="180;220;180" dur="4s" repeatCount="indefinite"/>
-      <animate attributeName="opacity" values=".6;1;.6" dur="4s" repeatCount="indefinite"/>
-    </ellipse>
-
-    <!-- Ghost body (from icon_ghost.svg), scaled + centered to (300, 180) -->
-    <g transform="translate(180 40) scale(.22)">
-      <path d="M265.825 2.45867C311.428 -5.78888 387.747 7.48183 428.696 30.7783C486.535 63.6907 525.657 112.376 549.244 180.761C560.439 213.204 564.8 310.789 557.18 358.125C542.077 451.956 493.45 536.994 422.119 594.356C381.484 627.034 312.173 667.471 296.835 667.471C282.793 667.47 274.722 661.47 274.722 650.995C274.722 647.145 288.351 628.364 305.025 609.23C339.845 569.263 358.976 541.255 365.928 520.05C376.161 488.838 359.741 465.639 327.414 465.639C311.958 465.639 307.678 467.633 295.148 480.707C287.194 488.994 274.527 506.895 266.985 520.479C239.607 569.789 189.072 619.236 126.441 657.972C62.5534 697.471 32.6033 704.193 11.9425 683.613C-5.71308 666.063 -4.02527 650.193 18.5598 621.444C28.5957 608.682 41.58 589.312 47.3934 578.426C54.3487 565.43 58.0734 550.963 58.2529 536.24L60.1972 376.594C62.1612 215.689 63.2625 192 69.6059 172.768C99.8038 81.076 166.844 21.8627 261.325 3.31251L265.825 2.45867ZM211.13 135.262C168.437 135.262 133.828 169.703 133.828 212.188C133.828 254.673 168.437 289.114 211.13 289.114C253.821 289.113 288.431 254.672 288.431 212.188C288.431 169.703 253.822 135.263 211.13 135.262ZM407.212 135.262C364.52 135.262 329.91 169.703 329.91 212.188C329.911 254.673 364.52 289.114 407.212 289.114C449.904 289.113 484.514 254.672 484.514 212.188C484.514 169.703 449.904 135.263 407.212 135.262Z"
-            fill="#FDFDFD"/>
+      values="350 74; 350 62; 350 74" keyTimes="0;.5;1" dur="5s" repeatCount="indefinite"/>
+    <g transform="scale(.65)">
+      <path d="M479.868 51.8809C496.207 48.9259 523.552 53.6807 538.223 62.0275C558.946 73.8197 572.963 91.2629 581.414 115.765C585.425 127.389 586.988 162.352 584.257 179.312C578.846 212.931 561.424 243.399 535.867 263.951C521.308 275.659 496.474 290.147 490.979 290.147C485.948 290.147 483.056 287.997 483.056 284.244C483.056 282.865 487.939 276.136 493.913 269.28C506.389 254.961 513.243 244.926 515.734 237.328C519.4 226.145 513.517 217.833 501.935 217.833C496.397 217.833 494.864 218.548 490.374 223.232C487.525 226.201 482.986 232.615 480.284 237.482C470.475 255.149 452.368 272.865 429.928 286.744C407.038 300.896 396.308 303.305 388.905 295.931C382.579 289.643 383.184 283.957 391.276 273.656C394.872 269.084 399.524 262.144 401.607 258.244C404.099 253.587 405.433 248.404 405.498 243.129L406.194 185.929C406.898 128.279 407.292 119.791 409.565 112.901C420.385 80.0486 444.405 58.8332 478.256 52.1868L479.868 51.8809ZM460.272 99.4628C444.975 99.4628 432.575 111.803 432.575 127.025C432.575 142.246 444.975 154.586 460.272 154.586C475.568 154.586 487.968 142.246 487.968 127.025C487.968 111.803 475.568 99.4631 460.272 99.4628ZM530.526 99.4628C515.23 99.4628 502.829 111.803 502.829 127.025C502.829 142.246 515.23 154.586 530.526 154.586C545.822 154.586 558.222 142.246 558.222 127.025C558.222 111.803 545.822 99.4631 530.526 99.4628Z" fill="#FDFDFD"/>
+      <path d="M848.044 254.794C831.628 254.794 818.86 250.69 809.74 242.482C800.848 234.046 796.401 222.19 796.401 206.913V114.914L796.401 74.713L796.401 73.5313V35.9107C812.818 33.1747 828.778 31.1226 844.282 29.7546V73.5313H888.743V114.914H844.282V198.021C844.282 207.825 849.754 212.727 860.698 212.727C867.083 212.727 874.379 211.245 882.587 208.281L893.189 244.534C878.597 251.374 863.548 254.794 848.044 254.794Z" fill="#FDFDFD"/>
+      <path d="M674.049 254.794C662.877 254.794 652.047 253.653 641.559 251.373C631.298 249.093 622.52 246.015 615.224 242.139L619.67 201.099C627.422 205.887 635.972 209.763 645.321 212.727C654.669 215.691 663.447 217.173 671.655 217.173C678.951 217.173 685.335 215.805 690.807 213.069C696.279 210.333 699.015 206.115 699.015 200.415C699.015 194.943 696.051 190.953 690.123 188.444C684.423 185.936 675.531 182.402 663.447 177.842C658.887 176.018 653.757 173.966 648.057 171.686C642.585 169.406 637.34 166.442 632.324 162.794C627.308 158.918 623.204 154.016 620.012 148.088C616.82 141.932 615.224 134.294 615.224 125.174C615.224 112.861 618.302 102.601 624.458 94.3931C630.842 85.9569 639.506 79.5728 650.451 75.2408C661.395 70.9087 673.707 68.7427 687.387 68.7427C696.735 68.7427 705.856 69.6547 714.748 71.4787C723.868 73.3028 732.532 75.6968 740.74 78.6608L734.242 119.359C727.63 115.483 720.106 112.405 711.67 110.125C703.461 107.617 695.709 106.363 688.413 106.363C681.345 106.363 675.417 107.617 670.629 110.125C666.069 112.405 663.789 116.053 663.789 121.069C663.789 125.174 665.385 128.48 668.577 130.988C671.769 133.268 676.101 135.32 681.573 137.144C687.045 138.74 693.087 140.906 699.699 143.642C706.312 146.15 713.266 149.342 720.562 153.218C728.086 157.094 734.47 162.566 739.714 169.634C744.958 176.702 747.58 186.392 747.58 198.705C747.58 211.701 744.274 222.417 737.662 230.853C731.278 239.061 722.5 245.103 711.328 248.979C700.383 252.855 687.957 254.794 674.049 254.794Z" fill="#FDFDFD"/>
+      <path d="M205.938 249.664V0H254.16V99.1815C261.456 88.4653 269.664 80.7132 278.785 75.9251C287.905 71.1371 298.279 68.743 309.907 68.743C328.831 68.743 343.652 74.4431 354.368 85.8433C365.084 97.0155 370.442 112.634 370.442 132.698V249.664H322.219V140.222C322.219 130.874 319.664 123.692 315.379 118.676C310.819 113.66 304.663 111.152 296.911 111.152C288.247 111.152 280.039 114.116 272.286 120.044C264.762 125.972 258.72 133.61 254.16 142.958V249.664H205.938Z" fill="#FDFDFD"/>
+      <path d="M65.665 327.299C57.4569 327.299 48.1087 326.729 37.6206 325.589C27.3604 324.449 16.8723 322.397 6.15609 319.432L15.3902 277.024C24.7384 279.76 33.9725 282.04 43.0927 283.864C52.2128 285.688 61.2189 286.6 70.1111 286.6C81.9672 286.6 90.9734 284.662 97.1295 280.786C103.514 277.138 107.96 271.324 110.468 263.344C112.976 255.364 114.458 244.989 114.914 232.221H113.888C100.892 247.269 84.2473 254.794 63.955 254.794C43.8907 254.794 28.1584 247.269 16.7583 232.221C5.58609 216.945 0 195.855 0 168.95C0 136.346 8.43613 111.493 25.3084 94.3931C42.1806 77.2928 66.121 68.7427 97.1295 68.7427C106.478 68.7427 116.624 69.5407 127.568 71.1367C138.512 72.5047 149.798 74.4428 161.426 76.9508C161.654 94.5071 161.768 112.177 161.768 129.962C161.996 147.746 162.11 165.416 162.11 182.972C162.11 190.953 162.11 198.933 162.11 206.913C162.11 214.893 161.996 222.873 161.768 230.853C161.312 263.23 153.218 287.398 137.486 303.358C121.754 319.318 97.8135 327.299 65.665 327.299ZM76.6092 212.727C83.9053 212.727 90.6314 210.105 96.7875 204.861C103.172 199.389 108.872 191.979 113.888 182.63V113.887C106.364 111.835 99.0675 110.809 91.9994 110.809C77.4072 110.809 66.463 115.483 59.1669 124.832C51.8708 134.18 48.2227 147.746 48.2227 165.53C48.2227 180.35 50.6168 191.979 55.4048 200.415C60.4209 208.623 67.489 212.727 76.6092 212.727Z" fill="#FDFDFD"/>
     </g>
   </g>
 
-  <!-- Wordmark + tagline -->
-  <g transform="translate(560 150)" fill="#FDFDFD" font-family="-apple-system, Segoe UI Variable, Segoe UI, Inter, sans-serif">
-    <text font-size="88" font-weight="700" letter-spacing="-2">Ghost</text>
-    <text y="40" font-size="19" opacity=".72" letter-spacing=".4">
-      Assistente desktop de IA · invisível em screen-share
+  <!-- Tagline + pills -->
+  <g transform="translate(0 305)" fill="#FDFDFD" font-family="-apple-system, Segoe UI Variable, Segoe UI, Inter, sans-serif" text-anchor="middle">
+    <text x="640" y="0" font-size="15" opacity=".72" letter-spacing=".5">
+      Assistente desktop · invisível em screen-share · lê sua tela · transcreve reuniões
     </text>
-    <text y="70" font-size="19" opacity=".72" letter-spacing=".4">
-      Lê sua tela · transcreve reuniões · responde via OpenAI
+  </g>
+
+  <g transform="translate(434 330)">
+    <rect x="0" y="0" width="180" height="26" rx="13" fill="url(#accent)"/>
+    <text x="90" y="17" font-size="11" font-weight="700" fill="#00281e" text-anchor="middle"
+          font-family="-apple-system, Segoe UI Variable, Segoe UI, Inter, sans-serif" letter-spacing=".4">
+      WINDOWS · macOS  v1.0
     </text>
-
-    <!-- Pill: Windows + macOS -->
-    <g transform="translate(0 100)">
-      <rect x="0" y="0" width="210" height="36" rx="18" fill="url(#accent)"/>
-      <text x="105" y="23" font-size="13" font-weight="700" fill="#00281e" text-anchor="middle" letter-spacing=".4">
-        WINDOWS · macOS  v1.0
-      </text>
-    </g>
-
-    <!-- Pill: non-commercial -->
-    <g transform="translate(224 100)">
-      <rect x="0" y="0" width="186" height="36" rx="18" fill="none" stroke="#61DBB4" stroke-width="1.2"/>
-      <text x="93" y="23" font-size="13" font-weight="600" fill="#61DBB4" text-anchor="middle" letter-spacing=".4">
-        NCSAL v1.0 · non-commercial
-      </text>
-    </g>
+  </g>
+  <g transform="translate(628 330)">
+    <rect x="0" y="0" width="218" height="26" rx="13" fill="none" stroke="#61DBB4" stroke-width="1"/>
+    <text x="109" y="17" font-size="11" font-weight="600" fill="#61DBB4" text-anchor="middle"
+          font-family="-apple-system, Segoe UI Variable, Segoe UI, Inter, sans-serif" letter-spacing=".4">
+      NCSAL v1.0 · non-commercial
+    </text>
   </g>
 </svg>

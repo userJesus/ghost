@@ -35,7 +35,7 @@
   <a href="https://github.com/userJesus/ghost/releases/latest/download/Ghost-1.0.0.dmg">
     <img src="https://img.shields.io/badge/Baixar%20para%20macOS-Ghost%201.0.0.dmg-000000?style=for-the-badge&logo=apple&logoColor=white" alt="macOS installer"/>
   </a>
-  <br/><sub>macOS 11+ · inclui driver BlackHole · Apple Silicon + Intel</sub>
+  <br/><sub>macOS 11+ · inclui driver BlackHole 2ch · Apple Silicon + Intel</sub>
 </td>
 </tr>
 </table>
@@ -149,9 +149,9 @@ Para desinstalar depois: o DMG traz um `uninstall_mac.sh` que pergunta se quer a
 <table>
 <tr>
 <td align="center" width="230">
-  <img src=".github/assets/ghost-float.svg" alt="Ghost animated" width="160"/>
+  <img src=".github/assets/pixel-ghost.gif" alt="Ghost animated" width="170"/>
   <br/><strong>Ghost</strong><br/>
-  <sub>fantasma flutuando</sub>
+  <sub>fantasminha pixel-art do empty-state</sub>
 </td>
 <td valign="middle">
 
