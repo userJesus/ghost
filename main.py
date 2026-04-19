@@ -178,14 +178,17 @@ def _apply_response_popup_tweaks(api: GhostAPI):
             except Exception as e:
                 print(f"[warn] response popup protect: {e}", flush=True)
 
-        # Dropdown popup: capture-excluded BUT must retain the ability to gain
-        # focus so its JS `blur` handler can auto-close on click-outside.
-        # hide_from_taskbar sets WS_EX_TOOLWINDOW which suppresses activation,
-        # so we skip it here.
+        # Dropdown popup: full treatment (capture-excluded + no-taskbar).
+        # WS_EX_TOOLWINDOW only removes from taskbar + Alt+Tab — it does NOT
+        # suppress activation, so the JS `blur` handler that closes the
+        # dropdown on click-outside keeps working. (Earlier comment here
+        # claimed otherwise and was wrong: the main Ghost window has
+        # TOOLWINDOW applied and receives focus fine.)
         if dropdown_hwnd:
             try:
                 api.set_dropdown_hwnd(dropdown_hwnd)
                 hide_from_capture(dropdown_hwnd, True)
+                hide_from_taskbar(dropdown_hwnd)
                 print(f"[init] dropdown HWND={dropdown_hwnd}", flush=True)
             except Exception as e:
                 print(f"[warn] dropdown popup protect: {e}", flush=True)
