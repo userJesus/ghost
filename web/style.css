@@ -453,6 +453,54 @@ input, textarea, button, select {
 .update-banner-close:hover { background: rgba(255, 255, 255, 0.08); color: var(--text-primary); }
 .update-banner-close svg { width: 11px; height: 11px; }
 
+.update-banner-btn-secondary {
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border-radius: 4px;
+    border: 1px solid rgba(97, 219, 180, 0.35);
+    background: transparent;
+    color: var(--accent);
+    font-weight: 700;
+    cursor: pointer;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.update-banner-btn-secondary:hover {
+    background: rgba(97, 219, 180, 0.12);
+}
+
+/* Progress bar shown while the installer is downloading. */
+.update-banner-progress {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+.update-banner-progress-label {
+    font-size: 11px;
+    color: var(--text-secondary);
+    display: flex;
+    gap: 6px;
+    align-items: center;
+}
+.update-banner-progress-label strong { color: var(--accent); font-weight: 600; }
+.update-banner-progress-track {
+    width: 100%;
+    height: 4px;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 2px;
+    overflow: hidden;
+}
+.update-banner-progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent), #3cb895);
+    transition: width 0.2s ease;
+}
+
 .brand-logo {
     height: 18px;
     width: auto;

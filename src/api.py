@@ -151,6 +151,95 @@ class GhostAPI:
         except Exception as e:
             return {"error": _log_error("get_app_info", e)}
 
+    def download_and_install_update(self) -> dict:
+        """Fetches the latest installer from GitHub Releases and launches it.
+
+        Windows: runs GhostSetup.exe with Inno Setup's /SILENT flag, which
+                 closes Ghost, upgrades, and restarts the app automatically.
+        macOS:   runs `open GhostInstaller.pkg` which triggers the standard
+                 Installer wizard. The user authenticates once; Gatekeeper is
+                 bypassed because the file wasn't downloaded via a browser
+                 (no `com.apple.quarantine` attribute when fetched via urllib).
+
+        Download progress is reported to the webview via
+        `window.setUpdateProgress(pct)`.
+        """
+        try:
+            import subprocess
+            import tempfile
+            import urllib.request
+            from pathlib import Path as _Path
+            from .version import GITHUB_REPO_URL, __version__
+
+            if sys.platform == "win32":
+                asset_name = "GhostSetup.exe"
+            elif sys.platform == "darwin":
+                asset_name = "GhostInstaller.pkg"
+            else:
+                return {"error": f"auto-update not supported on {sys.platform}"}
+
+            url = f"{GITHUB_REPO_URL}/releases/latest/download/{asset_name}"
+            tmpdir = _Path(tempfile.gettempdir()) / "ghost-update"
+            tmpdir.mkdir(parents=True, exist_ok=True)
+            target = tmpdir / asset_name
+
+            # ---------- download with progress ----------
+            req = urllib.request.Request(
+                url, headers={"User-Agent": f"Ghost/{__version__}"}
+            )
+            last_pct = -1
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                total = int(resp.headers.get("Content-Length", 0))
+                with open(target, "wb") as f:
+                    downloaded = 0
+                    while True:
+                        chunk = resp.read(65536)
+                        if not chunk:
+                            break
+                        f.write(chunk)
+                        downloaded += len(chunk)
+                        if total:
+                            pct = int(downloaded * 100 / total)
+                            # Throttle to every 2% so we don't spam evaluate_js.
+                            if pct >= last_pct + 2:
+                                last_pct = pct
+                                try:
+                                    if self._window is not None:
+                                        self._window.evaluate_js(
+                                            f"window.setUpdateProgress({pct})"
+                                        )
+                                except Exception:
+                                    pass
+
+            # Report 100% before launching.
+            try:
+                if self._window is not None:
+                    self._window.evaluate_js("window.setUpdateProgress(100)")
+            except Exception:
+                pass
+
+            # ---------- launch installer + self-exit ----------
+            if sys.platform == "win32":
+                # Inno Setup: /SILENT installs with a progress window but no prompts,
+                # /CLOSEAPPLICATIONS lets it close Ghost.exe if still running,
+                # /RESTARTAPPLICATIONS re-launches Ghost after install.
+                subprocess.Popen(
+                    [str(target), "/SILENT", "/CLOSEAPPLICATIONS", "/RESTARTAPPLICATIONS"],
+                    creationflags=0x00000008 | 0x00000200,  # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
+                )
+            else:
+                # macOS: `open` sends the pkg to Installer.app.
+                subprocess.Popen(["open", str(target)])
+
+            # Exit current Ghost after a short delay so the installer can take over.
+            def _exit_soon():
+                time.sleep(1.5)
+                os._exit(0)
+            threading.Thread(target=_exit_soon, daemon=True).start()
+            return {"ok": True, "target": str(target)}
+        except Exception as e:
+            return {"error": _log_error("download_and_install_update", e)}
+
     def check_for_updates(self, force: bool = False) -> dict:
         """Query GitHub Releases and compare with the current version.
         Returns {hasUpdate, current, latest, releaseUrl, releaseNotes} or {error}.

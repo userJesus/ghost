@@ -31,6 +31,8 @@ function ghostApp() {
         appInfo: { version: "", author: "", authorGithub: "", authorLinkedin: "", repoUrl: "", releasesUrl: "" },
         updateInfo: { hasUpdate: false, current: "", latest: "", releaseUrl: "", releaseNotes: "" },
         updateBannerDismissed: false,
+        updateDownloading: false,
+        updateProgress: 0,
         openaiKeyInput: "",
         savingKey: false,
         settingsError: "",
@@ -952,6 +954,31 @@ function ghostApp() {
             if (!url) return;
             try { window.pywebview.api.open_url ? window.pywebview.api.open_url(url) : window.open(url, '_blank'); }
             catch (_) { window.open(url, '_blank'); }
+        },
+
+        async installUpdate() {
+            // Confirmation: the app will close during install.
+            const msg = 'O Ghost será atualizado para a versão ' + this.updateInfo.latest +
+                '.\n\nO app será fechado durante a instalação e reaberto automaticamente ao final.\n\nContinuar?';
+            if (!window.confirm(msg)) return;
+
+            // Expose the progress hook to Python before kicking off.
+            window.setUpdateProgress = (pct) => { this.updateProgress = Math.max(0, Math.min(100, pct)); };
+            this.updateDownloading = true;
+            this.updateProgress = 0;
+            try {
+                const r = await window.pywebview.api.download_and_install_update();
+                if (r && r.error) {
+                    alert('Erro ao baixar atualização: ' + r.error + '\n\nTente pelo botão "↗" e baixe manualmente.');
+                    this.updateDownloading = false;
+                    this.updateProgress = 0;
+                }
+                // On success, Python self-exits ~1.5s later. The app window closes.
+            } catch (e) {
+                alert('Erro ao iniciar atualização: ' + e);
+                this.updateDownloading = false;
+                this.updateProgress = 0;
+            }
         },
 
         async enterCompact() {
