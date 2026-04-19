@@ -119,7 +119,8 @@ Logs, histórico, configurações e sua chave da OpenAI nunca saem da sua máqui
 <summary><strong>🍏 macOS</strong> — clique para expandir</summary>
 
 1. [**Baixe o DMG**](https://github.com/userJesus/ghost/releases/latest/download/Ghost-1.0.0.dmg)
-2. Abra o `.dmg` → duplo-clique em **Ghost Installer.pkg**
+2. Abra o `.dmg` → **clique com o botão direito** em `Ghost Installer.pkg` → **Abrir** → **Abrir** na janela de confirmação
+   > ⚠️ Se der duplo-clique direto, o macOS bloqueia com _"desenvolvedor não identificado"_ (Gatekeeper). O Ghost ainda não é assinado com Apple Developer ID — [veja abaixo](#-aviso-de-gatekeeper-desenvolvedor-não-identificado) se cair nesse aviso.
 3. No passo "Personalizar":
    - ✅ **Ghost.app** (obrigatório)
    - ✅ **BlackHole 2ch** (recomendado — driver virtual de áudio para reuniões)
@@ -129,6 +130,48 @@ Logs, histórico, configurações e sua chave da OpenAI nunca saem da sua máqui
 5. Abra o Ghost pelo Launchpad → cole sua chave da OpenAI
 
 Para desinstalar depois: o DMG traz um `uninstall_mac.sh` que pergunta se quer apagar os dados + remover o BlackHole.
+
+##### 🛡️ Aviso de Gatekeeper ("desenvolvedor não identificado")
+
+O macOS mostra esse aviso em **qualquer** app que não foi notarizado pela Apple. Notarização exige conta Apple Developer paga ($99/ano), e o Ghost é distribuído gratuitamente sob licença não-comercial — a conta Apple não está nos planos. O instalador é **auditável**: você pode inspecionar todo o código-fonte neste repo, conferir o `SHA256SUMS.txt` do release, e reconstruir localmente com `scripts/build_mac.sh`.
+
+Escolha uma das opções abaixo (da mais segura para a mais ampla):
+
+**Opção 1 — Clique direito → Abrir** (recomendada, por-app)
+
+Em vez de duplo-clique, clique com o botão direito (ou Control+clique) em `Ghost Installer.pkg` → **Abrir**. O macOS mostra uma janela com um botão **Abrir** que autoriza **só este arquivo**. Mesma coisa para abrir o `.dmg` e depois o `Ghost.app`.
+
+**Opção 2 — System Settings → Privacy & Security** (também por-app)
+
+Tenta abrir o `.pkg` por duplo-clique → macOS bloqueia → abra **Ajustes do Sistema → Privacidade e Segurança** → role até o fim. Vai aparecer "Ghost Installer.pkg foi bloqueado" com um botão **Abrir Mesmo Assim / Open Anyway**. Clique.
+
+**Opção 3 — Remover a flag de quarentena via Terminal** (por-app, permanente)
+
+```bash
+sudo xattr -rd com.apple.quarantine ~/Downloads/Ghost-1.0.0.dmg
+# depois de instalar:
+sudo xattr -rd com.apple.quarantine /Applications/Ghost.app
+```
+
+Remove o atributo `com.apple.quarantine` só para esse arquivo — o Gatekeeper para de monitorá-lo. Usado por várias distribuições open-source.
+
+**Opção 4 — Habilitar "Qualquer origem" no sistema inteiro** (⚠️ amplo, menos seguro)
+
+Até o macOS Sierra existia uma opção "Qualquer origem / Anywhere" em Privacidade e Segurança. Apple removeu da UI, mas ela ainda funciona via Terminal:
+
+```bash
+sudo spctl --master-disable
+```
+
+Isso **desativa o Gatekeeper para todo o sistema** (qualquer app não-notarizado roda sem aviso). Só faça se tiver certeza do que está fazendo. Para reverter:
+
+```bash
+sudo spctl --master-enable
+```
+
+O status atual pode ser checado com `spctl --status`.
+
+> ℹ️ **Nossa recomendação**: use a Opção 1 ou 2. Autorizam apenas o Ghost, preservando a proteção do Gatekeeper para outros apps.
 
 </details>
 

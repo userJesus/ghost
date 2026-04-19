@@ -53,6 +53,36 @@ APP_BUNDLE="dist/Ghost.app"
 [ -d "${APP_BUNDLE}" ] || { echo "[mac-build] ERROR: Ghost.app not produced"; ls -la dist || true; exit 1; }
 
 # ---------------------------------------------------------------
+# 3b. Code-signing
+#
+#   If DEVELOPER_ID_APPLICATION is set (e.g. "Developer ID Application:
+#   Jesus Oliveira (TEAMID)"), do a proper Apple Developer ID sign that
+#   can pass notarization. Otherwise, fall back to an ad-hoc signature
+#   (`codesign --sign -`) — Gatekeeper still warns on first open, but the
+#   bundle is at least consistent / integrity-checked.
+# ---------------------------------------------------------------
+SIGN_ID="${DEVELOPER_ID_APPLICATION:--}"
+if [ "${SIGN_ID}" = "-" ]; then
+    echo "[mac-build] 3b/ ad-hoc code-signing (no Developer ID provided)"
+else
+    echo "[mac-build] 3b/ code-signing with Developer ID: ${SIGN_ID}"
+fi
+codesign --deep --force --sign "${SIGN_ID}" --timestamp --options runtime \
+    --entitlements /dev/stdin "${APP_BUNDLE}" <<'ENT' 2>/dev/null || \
+    codesign --deep --force --sign "${SIGN_ID}" "${APP_BUNDLE}"
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>com.apple.security.cs.allow-unsigned-executable-memory</key><true/>
+  <key>com.apple.security.cs.allow-jit</key><true/>
+  <key>com.apple.security.device.microphone</key><true/>
+  <key>com.apple.security.device.camera</key><true/>
+</dict>
+</plist>
+ENT
+
+# ---------------------------------------------------------------
 # 4. pkgbuild — wrap the app in a component pkg
 # ---------------------------------------------------------------
 echo "[mac-build] 4/7  wrapping Ghost.app into component pkg..."
