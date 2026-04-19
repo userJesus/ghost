@@ -77,6 +77,16 @@
             <span class="tool-lock" x-show="apiKeyMissing"></span>
         </button>
 
+        <button class="compact-btn" :class="{ processing: cloneRunning }"
+                @click="openCloneModal()"
+                data-tooltip-pos="below"
+                :data-tooltip="cloneRunning ? 'Clonagem em andamento — clique para abrir' : 'Clonar página web (URL → HTML + assets offline)'">
+            <svg viewBox="0 0 14 14" fill="none">
+                <path d="M5 9L2.5 6.5l2.5-2.5M9 5l2.5 2.5L9 10M7 2.5L6 11.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <span class="tool-dot tool-dot-rec" x-show="cloneRunning"></span>
+        </button>
+
         <button class="compact-btn" :class="{ 'active-tertiary': autoSpeak }"
                 @click="toggleAutoSpeak()"
                 data-tooltip-pos="below"
@@ -99,9 +109,6 @@
         </button>
         <button class="compact-btn" @click="exitCompact()" data-tooltip-pos="below" data-tooltip="Voltar ao tamanho normal">
             <svg viewBox="0 0 14 14" fill="none"><path d="M3 7h8M5 4l-2 3 2 3M9 4l2 3-2 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        </button>
-        <button class="compact-btn compact-btn-close" @click="closeApp()" data-tooltip-pos="below" data-tooltip="Fechar">
-            <svg viewBox="0 0 14 14" fill="none"><path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
         </button>
     </div>
 
@@ -146,6 +153,17 @@
                     </svg>
                     <span class="tool-dot tool-dot-rec" x-show="meetingRunning"></span>
                     <span class="tool-lock" x-show="apiKeyMissing"></span>
+                </button>
+
+                <button class="tool-btn"
+                        :class="{ processing: cloneRunning }"
+                        @click="openCloneModal()"
+                        data-tooltip-pos="below"
+                        :data-tooltip="cloneRunning ? 'Clonagem em andamento — clique para ver progresso' : 'Clonar página web (URL → HTML + assets offline)'">
+                    <svg viewBox="0 0 16 16" fill="none">
+                        <path d="M6 10L3 7l3-3M10 6l3 3-3 3M8 2.5L7 13.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                    <span class="tool-dot tool-dot-rec" x-show="cloneRunning"></span>
                 </button>
 
                 <button class="tool-btn"
@@ -1173,6 +1191,120 @@
                 <span class="meeting-dot" style="background:#fff; box-shadow: 0 0 8px rgba(255,255,255,0.6);"></span>
                 Iniciar gravação
             </button>
+        </div>
+    </div>
+</div>
+
+<!-- CLONE MODAL — pede URL, mostra progresso, oferece ações pós-clone -->
+<div class="modal-backdrop" x-show="cloneModalOpen" x-transition
+     @click.self="closeCloneModal()"
+     @keydown.escape.window="closeCloneModal()" x-cloak>
+    <div class="modal">
+        <div class="modal-header">
+            <h2>
+                <svg viewBox="0 0 16 16" fill="none" style="width:16px;height:16px;display:inline;vertical-align:-3px;margin-right:6px;">
+                    <path d="M6 10L3 7l3-3M10 6l3 3-3 3M8 2.5L7 13.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                Clonar página web
+            </h2>
+            <button class="btn-icon" @click="closeCloneModal()" :disabled="cloneRunning">
+                <svg viewBox="0 0 14 14" fill="none"><path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+            </button>
+        </div>
+
+        <div class="modal-body">
+            <!-- ESTADO: entrada de URL -->
+            <template x-if="!cloneRunning && !cloneResult">
+                <div>
+                    <p class="modal-hint">
+                        Baixa <strong>HTML + CSS + JS + imagens + fontes</strong> da URL para uma pasta offline.
+                        Detecta automaticamente sites com JavaScript e usa um navegador headless quando necessário.
+                    </p>
+                    <div class="settings-input-row" style="margin-top:8px;">
+                        <input type="text"
+                               class="settings-input"
+                               placeholder="Clique em 'Colar' após copiar a URL"
+                               x-model="cloneUrl"
+                               readonly>
+                        <button class="settings-paste-btn" @click="pasteCloneUrl()">
+                            📋 Colar
+                        </button>
+                    </div>
+                    <p class="settings-sub-hint" style="margin-top:6px;">
+                        O Ghost não rouba foco de outros apps, então não dá pra digitar direto.
+                        Copie a URL no navegador (Ctrl+C) e clique em <strong>Colar</strong>.
+                    </p>
+                    <div x-show="cloneError" x-text="cloneError"
+                         style="color:#ff6b6b;font-size:13px;margin-top:8px;"></div>
+                    <p class="modal-hint" style="margin-top:14px;font-size:12px;opacity:0.7;">
+                        Sites complexos (Instagram, Twitter, apps SaaS) podem baixar ~170 MB do navegador headless na primeira vez.
+                    </p>
+                </div>
+            </template>
+
+            <!-- ESTADO: clonando -->
+            <template x-if="cloneRunning">
+                <div>
+                    <p class="modal-hint" x-text="cloneStatus"></p>
+                    <div style="margin-top:16px;">
+                        <div style="height:6px;background:rgba(255,255,255,0.1);border-radius:3px;overflow:hidden;">
+                            <div :style="'height:100%;width:' + cloneProgressPct + '%;background:linear-gradient(90deg,#61DBB4,#3CB895);transition:width 0.3s;'"></div>
+                        </div>
+                        <div style="display:flex;justify-content:space-between;margin-top:6px;font-size:12px;opacity:0.7;">
+                            <span x-text="cloneProgress.done + ' / ' + cloneProgress.total + ' recursos'"></span>
+                            <span x-text="cloneProgressPct + '%'"></span>
+                        </div>
+                    </div>
+                </div>
+            </template>
+
+            <!-- ESTADO: concluído -->
+            <template x-if="cloneResult">
+                <div>
+                    <p class="modal-hint" style="color:#61DBB4;">
+                        ✓ Página clonada com sucesso
+                    </p>
+                    <div style="margin-top:12px;font-size:13px;line-height:1.8;">
+                        <div>Pasta: <code x-text="cloneResult.folder_name"
+                                          style="background:rgba(255,255,255,0.08);padding:2px 6px;border-radius:4px;font-size:12px;"></code></div>
+                        <div>Recursos: <strong x-text="cloneResult.assets_count"></strong></div>
+                        <div x-show="cloneResult.errors_count > 0" style="color:#ffaa44;">
+                            Falhas: <strong x-text="cloneResult.errors_count"></strong> (veja <code>_clone-errors.log</code>)
+                        </div>
+                        <div x-show="cloneResult.used_js" style="opacity:0.7;font-size:12px;margin-top:4px;">
+                            Renderizado via navegador headless (página SPA)
+                        </div>
+                    </div>
+                </div>
+            </template>
+        </div>
+
+        <div class="modal-footer">
+            <!-- Entrada -->
+            <template x-if="!cloneRunning && !cloneResult">
+                <div style="display:flex;gap:8px;width:100%;justify-content:flex-end;">
+                    <button class="modal-btn-secondary" @click="closeCloneModal()">Cancelar</button>
+                    <button class="modal-btn-primary" @click="startClone()" :disabled="!cloneUrl.trim()">
+                        Clonar
+                    </button>
+                </div>
+            </template>
+            <!-- Em progresso -->
+            <template x-if="cloneRunning">
+                <div style="display:flex;gap:8px;width:100%;justify-content:flex-end;">
+                    <button class="modal-btn-secondary" @click="cancelClone()">Cancelar</button>
+                </div>
+            </template>
+            <!-- Concluído -->
+            <template x-if="cloneResult">
+                <div style="display:flex;gap:8px;width:100%;justify-content:space-between;">
+                    <button class="modal-btn-secondary" @click="openClonesFolder()">Abrir pasta</button>
+                    <div style="display:flex;gap:8px;">
+                        <button class="modal-btn-secondary" @click="cloneResult = null">Clonar outra</button>
+                        <button class="modal-btn-primary" @click="openClonedPage()">Abrir no navegador</button>
+                    </div>
+                </div>
+            </template>
         </div>
     </div>
 </div>

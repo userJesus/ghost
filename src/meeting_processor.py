@@ -9,6 +9,7 @@ from PIL import Image
 
 from .capture import image_to_base64
 from .config import get_openai_key, get_openai_model
+from .gpt_client import completion_kwargs
 from .meeting import format_time
 
 
@@ -134,14 +135,15 @@ def summarize_meeting(segments: list[dict], screenshots: list[tuple[float, Image
                 },
             })
 
+    model = get_openai_model()
     response = _client().chat.completions.create(
-        model=get_openai_model(),
+        model=model,
         messages=[
             {"role": "system", "content": SUMMARY_PROMPT},
             {"role": "user", "content": user_content},
         ],
-        max_tokens=3000,
         response_format={"type": "json_object"},
+        **completion_kwargs(model, max_tokens=3000),
     )
 
     content = response.choices[0].message.content or "{}"

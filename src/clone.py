@@ -1,0 +1,703 @@
+"""Web page cloning: download HTML + all assets (CSS/JS/images/fonts) for offline view.
+
+Auto-detects SPA pages and escalates to headless browser rendering via Playwright
+(installed on demand the first time it's needed).
+
+Output: ~/Desktop/Ghost-Clones/<site>-<timestamp>/
+    index.html          - rewritten HTML
+    _assets/<host>/...  - all linked resources
+"""
+
+import hashlib
+import re
+import sys
+import threading
+import traceback
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime
+from pathlib import Path, PurePosixPath
+from urllib.parse import urldefrag, urljoin, urlparse
+
+import httpx
+from bs4 import BeautifulSoup
+
+USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
+)
+DEFAULT_HEADERS = {
+    "User-Agent": USER_AGENT,
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+    "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
+}
+
+CSS_URL_RE = re.compile(r"""url\(\s*(['"]?)([^'")]+)\1\s*\)""", re.IGNORECASE)
+CSS_IMPORT_RE = re.compile(
+    r"""@import\s+(?:url\()?\s*(['"])([^'"]+)\1\s*\)?""", re.IGNORECASE
+)
+
+MAX_WORKERS = 20
+FETCH_TIMEOUT = 15.0
+MAX_ASSET_BYTES = 50 * 1024 * 1024  # 50 MB per asset
+
+
+def clones_dir() -> Path:
+    p = Path.home() / "Desktop" / "Ghost-Clones"
+    p.mkdir(parents=True, exist_ok=True)
+    return p
+
+
+def _slug(text: str, maxlen: int = 40) -> str:
+    text = re.sub(r"[^A-Za-z0-9\-_.]", "-", text)
+    text = re.sub(r"-+", "-", text).strip("-.")
+    return text[:maxlen] or "page"
+
+
+def _folder_name(url: str) -> str:
+    u = urlparse(url)
+    host = _slug(u.netloc or "site", 60)
+    path_part = _slug((u.path or "").strip("/").replace("/", "-"), 30)
+    ts = datetime.now().strftime("%Y%m%d-%H%M")
+    if path_part and path_part != "index":
+        return f"{host}-{path_part}-{ts}"
+    return f"{host}-{ts}"
+
+
+def _asset_rel_path(absolute_url: str) -> str | None:
+    """Map an absolute URL to a relative filesystem path under _assets/."""
+    try:
+        parsed = urlparse(absolute_url)
+        if parsed.scheme not in ("http", "https"):
+            return None
+        host = _slug(parsed.netloc.replace(":", "_"), 80)
+        path = parsed.path or "/"
+        if path.endswith("/") or path == "":
+            path = path + "index.html"
+        # Query strings differentiate cached variants
+        if parsed.query:
+            qhash = hashlib.md5(parsed.query.encode("utf-8", "ignore")).hexdigest()[:8]
+            p = PurePosixPath(path)
+            stem = p.stem or "file"
+            ext = p.suffix
+            parent = str(p.parent).lstrip("/").strip(".")
+            new_name = f"{stem}.{qhash}{ext}" if ext else f"{stem}.{qhash}"
+            path = f"/{parent}/{new_name}" if parent else f"/{new_name}"
+        # Sanitize each path segment independently (preserve folder structure)
+        segments = [_slug(seg, 80) for seg in path.lstrip("/").split("/") if seg]
+        if not segments:
+            segments = ["index.html"]
+        return "_assets/" + host + "/" + "/".join(segments)
+    except Exception:
+        return None
+
+
+def _relative_between(from_rel: str, to_rel: str) -> str:
+    """Compute a relative URL path from from_rel (a file) to to_rel (a file)."""
+    try:
+        from_parts = PurePosixPath(from_rel).parent.parts
+        to_parts = PurePosixPath(to_rel).parts
+        i = 0
+        while i < len(from_parts) and i < len(to_parts) - 1 and from_parts[i] == to_parts[i]:
+            i += 1
+        ups = [".."] * (len(from_parts) - i)
+        downs = list(to_parts[i:])
+        return "/".join(ups + downs) if (ups + downs) else to_parts[-1]
+    except Exception:
+        return to_rel
+
+
+def _is_spa_shell(html: str) -> bool:
+    """Heuristic: detect an empty single-page-app shell that needs JS to render.
+
+    Focuses on POSITIVE signals of a framework-driven render (empty root div + JS bundle),
+    not just "short text", to avoid false positives on small static pages.
+    """
+    try:
+        soup = BeautifulSoup(html, "lxml")
+    except Exception:
+        soup = BeautifulSoup(html, "html.parser")
+    body = soup.find("body")
+    if not body:
+        return True
+    # Strip script/style/noscript before measuring text
+    for tag in body.find_all(["script", "style", "noscript", "template"]):
+        tag.decompose()
+    text = body.get_text(" ", strip=True)
+    text_len = len(text)
+
+    # Count scripts on the original soup (body was mutated above)
+    try:
+        orig_soup = BeautifulSoup(html, "lxml")
+    except Exception:
+        orig_soup = BeautifulSoup(html, "html.parser")
+    scripts = orig_soup.find_all("script") or []
+    external_scripts = [s for s in scripts if s.get("src")]
+    module_scripts = sum(1 for s in scripts if (s.get("type") or "").lower() == "module")
+
+    # 1) Empty SPA root element — strong signal
+    root_ids = ("root", "app", "__next", "__nuxt", "main-app", "svelte")
+    for rid in root_ids:
+        node = orig_soup.find(id=rid)
+        if node is not None:
+            inner = node.get_text(" ", strip=True)
+            if len(inner) < 30 and external_scripts:
+                return True
+
+    # 2) Next.js / Nuxt / Remix hydration payload with empty body
+    if "__NEXT_DATA__" in html and text_len < 400 and external_scripts:
+        return True
+    if "window.__NUXT__" in html and text_len < 400 and external_scripts:
+        return True
+
+    # 3) Many module scripts + small text body = modern SPA
+    if text_len < 300 and module_scripts >= 2:
+        return True
+
+    # 4) Lots of external JS + very little visible text
+    return text_len < 200 and len(external_scripts) >= 4
+
+
+class _Ctx:
+    """Per-clone session state: shared httpx client + asset tracking + cancel flag."""
+
+    def __init__(self, output_dir: Path, base_url: str):
+        self.output_dir = output_dir
+        self.base_url = base_url
+        self.client = httpx.Client(
+            headers=DEFAULT_HEADERS,
+            follow_redirects=True,
+            timeout=FETCH_TIMEOUT,
+            verify=False,  # some sites have cert oddities; we're not authenticating
+            http2=False,
+        )
+        # url -> local rel path (e.g. "_assets/host/path/file.css")
+        self.url_to_local: dict[str, str] = {}
+        # rel path -> bytes (queued to write)
+        self.to_write: dict[str, bytes] = {}
+        # URLs we've already tried to fetch (success OR failure) — prevents
+        # infinite re-attempts when CSS references unreachable/404 resources.
+        self.attempted: set[str] = set()
+        self.seen_css_urls: set[str] = set()
+        self.lock = threading.Lock()
+        self.cancel = False
+        self.errors: list[str] = []
+
+    def close(self):
+        import contextlib
+        with contextlib.suppress(Exception):
+            self.client.close()
+
+    def register(self, absolute_url: str) -> str | None:
+        absolute_url = urldefrag(absolute_url)[0]
+        if not absolute_url:
+            return None
+        with self.lock:
+            if absolute_url in self.url_to_local:
+                return self.url_to_local[absolute_url]
+            rel = _asset_rel_path(absolute_url)
+            if rel is None:
+                return None
+            # Avoid collision with index.html
+            if rel == "index.html":
+                rel = "_assets/index.html"
+            self.url_to_local[absolute_url] = rel
+            return rel
+
+
+def _fetch(ctx: _Ctx, url: str) -> tuple[bytes, str] | None:
+    """Fetch a URL, return (bytes, content-type). Returns None on failure."""
+    try:
+        with ctx.client.stream("GET", url) as resp:
+            if resp.status_code >= 400:
+                ctx.errors.append(f"{resp.status_code} {url[:120]}")
+                return None
+            ctype = resp.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+            chunks: list[bytes] = []
+            total = 0
+            for chunk in resp.iter_bytes():
+                chunks.append(chunk)
+                total += len(chunk)
+                if total > MAX_ASSET_BYTES:
+                    ctx.errors.append(f"too-large {url[:120]}")
+                    return None
+            return b"".join(chunks), ctype
+    except Exception as e:
+        ctx.errors.append(f"{type(e).__name__} {url[:120]}")
+        return None
+
+
+def _rewrite_css_text(css_text: str, css_absolute_url: str, css_local_rel: str,
+                       ctx: _Ctx) -> str:
+    """Rewrite url(...) and @import in a CSS document and recursively fetch referenced assets."""
+
+    def _replace_url(match: re.Match) -> str:
+        quote = match.group(1)
+        raw = (match.group(2) or "").strip()
+        if not raw or raw.startswith("data:") or raw.startswith("#"):
+            return match.group(0)
+        absolute = urljoin(css_absolute_url, raw)
+        local = ctx.register(absolute)
+        if not local:
+            return match.group(0)
+        rel = _relative_between(css_local_rel, local)
+        # Queue for download (will be processed by main worker)
+        with ctx.lock:
+            if absolute not in ctx.seen_css_urls:
+                ctx.seen_css_urls.add(absolute)
+        return f"url({quote}{rel}{quote})"
+
+    def _replace_import(match: re.Match) -> str:
+        quote = match.group(1)
+        raw = (match.group(2) or "").strip()
+        if not raw or raw.startswith("data:"):
+            return match.group(0)
+        absolute = urljoin(css_absolute_url, raw)
+        local = ctx.register(absolute)
+        if not local:
+            return match.group(0)
+        rel = _relative_between(css_local_rel, local)
+        with ctx.lock:
+            if absolute not in ctx.seen_css_urls:
+                ctx.seen_css_urls.add(absolute)
+        return f"@import {quote}{rel}{quote}"
+
+    out = CSS_IMPORT_RE.sub(_replace_import, css_text)
+    out = CSS_URL_RE.sub(_replace_url, out)
+    return out
+
+
+def _process_asset(ctx: _Ctx, absolute_url: str, local_rel: str) -> bool:
+    """Download an asset. If it's CSS, recursively collect its referenced assets."""
+    if ctx.cancel:
+        return False
+    with ctx.lock:
+        ctx.attempted.add(absolute_url)
+    result = _fetch(ctx, absolute_url)
+    if result is None:
+        return False
+    data, ctype = result
+
+    is_css = (
+        "css" in ctype
+        or local_rel.endswith(".css")
+        or absolute_url.split("?", 1)[0].lower().endswith(".css")
+    )
+
+    if is_css:
+        try:
+            text = data.decode("utf-8", errors="replace")
+            rewritten = _rewrite_css_text(text, absolute_url, local_rel, ctx)
+            data = rewritten.encode("utf-8", errors="replace")
+        except Exception as e:
+            ctx.errors.append(f"css-rewrite {type(e).__name__} {absolute_url[:100]}")
+
+    with ctx.lock:
+        ctx.to_write[local_rel] = data
+    return True
+
+
+# ---- HTML asset extraction / rewriting -------------------------------------
+
+# Tag/attr pairs that contain a single URL
+TAG_URL_ATTRS: list[tuple[str, str]] = [
+    ("link", "href"),
+    ("script", "src"),
+    ("img", "src"),
+    ("img", "data-src"),
+    ("source", "src"),
+    ("video", "src"),
+    ("video", "poster"),
+    ("audio", "src"),
+    ("iframe", "src"),
+    ("embed", "src"),
+    ("object", "data"),
+    ("use", "href"),
+    ("use", "xlink:href"),
+    ("image", "href"),
+    ("image", "xlink:href"),
+]
+
+
+def _process_srcset(value: str, base_url: str, ctx: _Ctx, html_local: str = "index.html") -> str:
+    """Rewrite an HTML `srcset` attribute."""
+    parts = [p.strip() for p in value.split(",") if p.strip()]
+    out_parts = []
+    for part in parts:
+        bits = part.split(None, 1)
+        url_part = bits[0]
+        descriptor = bits[1] if len(bits) > 1 else ""
+        if url_part.startswith("data:"):
+            out_parts.append(part)
+            continue
+        absolute = urljoin(base_url, url_part)
+        local = ctx.register(absolute)
+        if local is None:
+            out_parts.append(part)
+            continue
+        rel = _relative_between(html_local, local)
+        out_parts.append(f"{rel} {descriptor}".strip())
+    return ", ".join(out_parts)
+
+
+def _process_html(html: str, base_url: str, ctx: _Ctx) -> str:
+    """Parse HTML, collect + register all asset URLs, return rewritten HTML."""
+    try:
+        soup = BeautifulSoup(html, "lxml")
+    except Exception:
+        soup = BeautifulSoup(html, "html.parser")
+
+    html_local = "index.html"
+
+    # Strip <base> (we're resolving URLs ourselves); save original href for base_url fallback
+    for base_tag in soup.find_all("base"):
+        href = base_tag.get("href")
+        if href:
+            base_url = urljoin(base_url, href)
+        base_tag.decompose()
+
+    def rewrite_single(absolute: str) -> str | None:
+        local = ctx.register(absolute)
+        if not local:
+            return None
+        return _relative_between(html_local, local)
+
+    # Standard single-URL attributes
+    for tag_name, attr in TAG_URL_ATTRS:
+        for tag in soup.find_all(tag_name):
+            val = tag.get(attr)
+            if not val:
+                continue
+            val = val.strip()
+            if val.startswith(("data:", "javascript:", "mailto:", "tel:", "#")):
+                continue
+            absolute = urljoin(base_url, val)
+            if not urlparse(absolute).scheme.startswith("http"):
+                continue
+            rel = rewrite_single(absolute)
+            if rel:
+                tag[attr] = rel
+                # Drop SRI hashes (the file contents may differ post-rewrite)
+                if tag.has_attr("integrity"):
+                    del tag["integrity"]
+                # Crossorigin is irrelevant for local files
+                if tag.has_attr("crossorigin"):
+                    del tag["crossorigin"]
+
+    # srcset on <img> and <source>
+    for tag in soup.find_all(["img", "source"]):
+        for attr in ("srcset", "data-srcset"):
+            val = tag.get(attr)
+            if val:
+                tag[attr] = _process_srcset(val, base_url, ctx, html_local)
+
+    # Inline style attributes
+    for tag in soup.find_all(style=True):
+        style_val = tag["style"]
+        new_val = _rewrite_css_text(style_val, base_url, html_local, ctx)
+        tag["style"] = new_val
+
+    # Inline <style> blocks
+    for style_tag in soup.find_all("style"):
+        if style_tag.string:
+            style_tag.string = _rewrite_css_text(style_tag.string, base_url, html_local, ctx)
+
+    # Meta refresh redirects → neutralize (we want to stay on the cloned page)
+    for meta in soup.find_all("meta", attrs={"http-equiv": True}):
+        if (meta.get("http-equiv") or "").lower() == "refresh":
+            meta.decompose()
+
+    # Strip CSP meta (local file:// contexts handle it differently)
+    for meta in soup.find_all("meta"):
+        he = (meta.get("http-equiv") or "").lower()
+        if he in ("content-security-policy", "content-security-policy-report-only"):
+            meta.decompose()
+
+    # Add a banner comment + UTF-8 charset meta (ensures offline rendering is predictable)
+    if soup.head is not None:
+        charset = soup.head.find("meta", charset=True)
+        if not charset:
+            meta = soup.new_tag("meta", charset="utf-8")
+            soup.head.insert(0, meta)
+
+    return str(soup)
+
+
+# ---- Playwright (optional, on-demand) --------------------------------------
+
+def _try_import_playwright():
+    try:
+        from playwright.sync_api import sync_playwright  # noqa
+        return True
+    except Exception:
+        return False
+
+
+def _ensure_playwright(status_cb) -> bool:
+    """Import playwright; if missing, `pip install playwright && playwright install chromium`.
+    Returns True on success."""
+    import subprocess
+    if _try_import_playwright():
+        # Chromium may still be missing — try to launch as probe later
+        return True
+    status_cb("Instalando Playwright (primeira vez, ~1 min)...")
+    try:
+        subprocess.run(
+            [sys.executable, "-m", "pip", "install", "--quiet", "playwright"],
+            check=True,
+            timeout=180,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+    except Exception as e:
+        print(f"[clone] pip install playwright failed: {e}", flush=True)
+        return False
+    status_cb("Baixando navegador headless (~170 MB)...")
+    try:
+        subprocess.run(
+            [sys.executable, "-m", "playwright", "install", "chromium"],
+            check=True,
+            timeout=600,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+    except Exception as e:
+        print(f"[clone] playwright install chromium failed: {e}", flush=True)
+        return False
+    return _try_import_playwright()
+
+
+def _render_with_playwright(url: str, status_cb) -> tuple[str, str] | None:
+    """Return (final_rendered_html, final_url) after JS execution."""
+    try:
+        from playwright.sync_api import sync_playwright
+    except Exception:
+        return None
+    try:
+        with sync_playwright() as p:
+            try:
+                browser = p.chromium.launch(headless=True)
+            except Exception as e:
+                msg = str(e)
+                # Browser binary missing — try to install it now
+                if "Executable doesn't exist" in msg or "browserType.launch" in msg:
+                    import subprocess
+                    status_cb("Instalando navegador headless (~170 MB)...")
+                    subprocess.run(
+                        [sys.executable, "-m", "playwright", "install", "chromium"],
+                        check=True,
+                        timeout=600,
+                        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                    )
+                    browser = p.chromium.launch(headless=True)
+                else:
+                    raise
+            ctx = browser.new_context(
+                user_agent=USER_AGENT,
+                viewport={"width": 1366, "height": 900},
+                locale="pt-BR",
+            )
+            import contextlib
+            page = ctx.new_page()
+            page.goto(url, wait_until="domcontentloaded", timeout=30000)
+            # networkidle may never be reached on sites with persistent polling — best-effort
+            with contextlib.suppress(Exception):
+                page.wait_for_load_state("networkidle", timeout=15000)
+            # Scroll to trigger lazy-loaded content (IntersectionObserver-based loaders)
+            with contextlib.suppress(Exception):
+                page.evaluate(
+                    "async () => { "
+                    "  await new Promise(r => setTimeout(r, 500)); "
+                    "  window.scrollTo(0, document.body.scrollHeight); "
+                    "  await new Promise(r => setTimeout(r, 800)); "
+                    "  window.scrollTo(0, 0); "
+                    "  await new Promise(r => setTimeout(r, 300)); "
+                    "}"
+                )
+            with contextlib.suppress(Exception):
+                page.wait_for_load_state("networkidle", timeout=5000)
+            final_url = page.url
+            html = page.content()
+            browser.close()
+            return html, final_url
+    except Exception as e:
+        print(f"[clone] playwright render failed: {e}", flush=True)
+        traceback.print_exc()
+        return None
+
+
+# ---- Main cloner ------------------------------------------------------------
+
+class WebCloner:
+    def __init__(self):
+        self._running = False
+        self._thread: threading.Thread | None = None
+        self._status = ""
+        self._progress = {"done": 0, "total": 0}
+        self._result: dict | None = None
+        self._cancel = False
+        self._ctx: _Ctx | None = None
+
+    def is_running(self) -> bool:
+        return self._running
+
+    def start(self, url: str) -> dict:
+        if self._running:
+            return {"error": "Uma clonagem já está em andamento"}
+        url = (url or "").strip()
+        if not url:
+            return {"error": "URL vazia"}
+        if not url.startswith(("http://", "https://")):
+            url = "https://" + url
+        try:
+            parsed = urlparse(url)
+            if not parsed.netloc:
+                return {"error": "URL inválida"}
+        except Exception:
+            return {"error": "URL inválida"}
+
+        self._running = True
+        self._status = "Iniciando..."
+        self._progress = {"done": 0, "total": 0}
+        self._result = None
+        self._cancel = False
+        self._thread = threading.Thread(target=self._worker, args=(url,), daemon=True)
+        self._thread.start()
+        return {"ok": True}
+
+    def cancel(self) -> dict:
+        self._cancel = True
+        if self._ctx is not None:
+            self._ctx.cancel = True
+        return {"ok": True}
+
+    def get_status(self) -> dict:
+        return {
+            "running": self._running,
+            "status": self._status,
+            "progress": dict(self._progress),
+            "has_result": self._result is not None,
+        }
+
+    def consume_result(self) -> dict | None:
+        r = self._result
+        self._result = None
+        return r
+
+    def _set_status(self, text: str):
+        self._status = text
+        print(f"[clone] {text}", flush=True)
+
+    def _worker(self, url: str):
+        try:
+            folder_name = _folder_name(url)
+            out_dir = clones_dir() / folder_name
+            out_dir.mkdir(parents=True, exist_ok=True)
+
+            ctx = _Ctx(out_dir, url)
+            self._ctx = ctx
+
+            # Phase 1: static fetch
+            self._set_status("Baixando HTML...")
+            static_result = _fetch(ctx, url)
+            if static_result is None:
+                raise RuntimeError(f"Não foi possível baixar {url}")
+            static_bytes, _ctype = static_result
+            html = static_bytes.decode("utf-8", errors="replace")
+            final_url = url
+
+            # Phase 2: SPA detection → Playwright re-render if needed
+            used_js = False
+            if _is_spa_shell(html):
+                self._set_status("Página SPA detectada — renderizando com navegador headless...")
+                if _ensure_playwright(self._set_status):
+                    self._set_status("Renderizando JavaScript...")
+                    rendered = _render_with_playwright(url, self._set_status)
+                    if rendered is not None:
+                        html, final_url = rendered
+                        used_js = True
+                    else:
+                        self._set_status("Renderização JS falhou — usando HTML estático")
+                else:
+                    self._set_status("Playwright indisponível — usando HTML estático")
+
+            if self._cancel:
+                raise RuntimeError("Cancelado pelo usuário")
+
+            # Phase 3: parse HTML, register + rewrite asset URLs
+            self._set_status("Extraindo recursos (CSS/JS/imagens)...")
+            rewritten_html = _process_html(html, final_url, ctx)
+
+            # Phase 4: download assets in parallel. CSS files, once fetched, can register
+            # ADDITIONAL nested URLs (@import, url(), fonts) on the fly. We keep draining
+            # the `pending` set (URLs in url_to_local that we haven't attempted yet) until
+            # it's empty, so the count-total naturally grows as discoveries happen.
+            self._set_status("Baixando recursos...")
+            done = 0
+            max_waves = 6  # safety cap: CSS chains beyond 6 levels are implausible
+
+            for _wave in range(max_waves):
+                if self._cancel:
+                    break
+                with ctx.lock:
+                    pending = [
+                        (u, rel) for u, rel in ctx.url_to_local.items()
+                        if u not in ctx.attempted
+                    ]
+                if not pending:
+                    break
+                with ctx.lock:
+                    total = len(ctx.url_to_local)
+                self._progress = {"done": done, "total": total}
+                self._set_status(f"Baixando recursos ({len(pending)} nesta rodada)...")
+
+                with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
+                    futures = {
+                        pool.submit(_process_asset, ctx, u, rel): u
+                        for u, rel in pending
+                    }
+                    for _fut in as_completed(futures):
+                        if self._cancel:
+                            break
+                        done += 1
+                        with ctx.lock:
+                            total = len(ctx.url_to_local)
+                        self._progress = {"done": done, "total": total}
+
+            # Phase 5: write everything to disk
+            self._set_status("Salvando em disco...")
+            (out_dir / "index.html").write_bytes(rewritten_html.encode("utf-8", errors="replace"))
+            for rel, data in ctx.to_write.items():
+                dest = out_dir / rel
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                try:
+                    dest.write_bytes(data)
+                except Exception as e:
+                    ctx.errors.append(f"write-fail {rel}: {e}")
+
+            # Write a small log file with errors (if any)
+            if ctx.errors:
+                (out_dir / "_clone-errors.log").write_text(
+                    "\n".join(ctx.errors[:500]), encoding="utf-8"
+                )
+
+            self._set_status(f"Concluído: {folder_name}")
+            self._result = {
+                "ok": True,
+                "folder": str(out_dir),
+                "folder_name": folder_name,
+                "index_path": str(out_dir / "index.html"),
+                "assets_count": len(ctx.to_write),
+                "errors_count": len(ctx.errors),
+                "used_js": used_js,
+            }
+        except Exception as e:
+            tb = traceback.format_exc()
+            print(f"[clone] error: {e}\n{tb}", file=sys.stderr, flush=True)
+            self._set_status(f"Erro: {e}")
+            self._result = {"error": f"{type(e).__name__}: {e}"}
+        finally:
+            try:
+                if self._ctx is not None:
+                    self._ctx.close()
+            except Exception:
+                pass
+            self._ctx = None
+            self._running = False

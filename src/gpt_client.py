@@ -12,6 +12,29 @@ def _client() -> OpenAI:
         )
     return OpenAI(api_key=key)
 
+
+def completion_kwargs(model: str, max_tokens: int,
+                       temperature: float | None = None) -> dict:
+    """Normalize chat.completions.create kwargs per model family.
+
+    The GPT-5 family ('gpt-5', 'gpt-5-mini', 'gpt-5-nano') has breaking changes
+    vs GPT-4.x:
+      - `max_tokens` → rejected; must use `max_completion_tokens`
+      - `temperature` → only the default (1) is accepted; any other value is
+        rejected with 400. We simply drop the argument.
+
+    All other families (gpt-4.1*, gpt-4o*) accept the classic parameters.
+    """
+    is_gpt5 = model.startswith("gpt-5")
+    kwargs: dict = {}
+    if is_gpt5:
+        kwargs["max_completion_tokens"] = max_tokens
+    else:
+        kwargs["max_tokens"] = max_tokens
+        if temperature is not None:
+            kwargs["temperature"] = temperature
+    return kwargs
+
 BASE_PERSONA = (
     "Você é o Ghost 👻 — um assistente de IA pessoal rodando no desktop do "
     "usuário. Seja direto, objetivo e útil. Responda em português brasileiro "
@@ -118,10 +141,11 @@ def chat_completion(messages: list[dict]) -> str:
     # evita que a IA mencione captura de tela em perguntas puramente textuais.
     system_content = BASE_PERSONA + (SCREEN_CONTEXT_ADDENDUM if _has_image(messages) else "")
     full_messages = [{"role": "system", "content": system_content}] + messages
+    model = get_openai_model()
     response = _client().chat.completions.create(
-        model=get_openai_model(),
+        model=model,
         messages=full_messages,
-        max_tokens=2000,
+        **completion_kwargs(model, max_tokens=2000),
     )
     return response.choices[0].message.content or ""
 
@@ -150,11 +174,11 @@ def generate_conversation_title(messages: list[dict]) -> str:
             "genérico. Escreva em português. Retorne APENAS o título, nada mais.\n\n"
             f"---\n{convo}\n---\n\nTítulo:"
         )
+        model = get_openai_model()
         resp = _client().chat.completions.create(
-            model=get_openai_model(),
+            model=model,
             messages=[{"role": "user", "content": prompt}],
-            max_tokens=24,
-            temperature=0.4,
+            **completion_kwargs(model, max_tokens=24, temperature=0.4),
         )
         title = (resp.choices[0].message.content or "").strip()
         # Limpeza: remove aspas, "título:" prefix, pontuação final

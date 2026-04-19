@@ -10,6 +10,7 @@ from pathlib import Path
 
 from . import history as _history
 from .capture import capture_fullscreen, capture_region, image_to_base64, image_to_data_url
+from .clone import WebCloner, clones_dir
 from .config import PRESETS
 from .gpt_client import build_user_message, chat_completion
 from .meeting import MeetingRecorder, format_time
@@ -78,6 +79,9 @@ class GhostAPI:
         # Response popup window (pre-created, hidden until compact mode shows a response)
         self._response_window = None
         self._response_hwnd = 0
+
+        # Web page cloner (URL → local HTML + assets bundle)
+        self._cloner = WebCloner()
 
         # Floating dropdown popup (third window — pre-created hidden off-screen)
         self._dropdown_window = None
@@ -699,12 +703,14 @@ class GhostAPI:
             )
 
             from openai import OpenAI
+
+            from .gpt_client import completion_kwargs
             client = OpenAI(api_key=key, timeout=45.0)
+            model = get_openai_model()
             resp = client.chat.completions.create(
-                model=get_openai_model(),
+                model=model,
                 messages=[{"role": "user", "content": prompt}],
-                max_tokens=500,
-                temperature=0.3,
+                **completion_kwargs(model, max_tokens=500, temperature=0.3),
             )
             summary = (resp.choices[0].message.content or "").strip()
             return {"ok": True, "summary": summary}
@@ -769,7 +775,12 @@ class GhostAPI:
         try:
             from openai import OpenAI
 
-            from .gpt_client import BASE_PERSONA, SCREEN_CONTEXT_ADDENDUM, _has_image
+            from .gpt_client import (
+                BASE_PERSONA,
+                SCREEN_CONTEXT_ADDENDUM,
+                _has_image,
+                completion_kwargs,
+            )
 
             # Adiciona contexto watch/meeting se relevante (mesma lógica do send_text)
             user_content = text
@@ -805,8 +816,8 @@ class GhostAPI:
             stream = client.chat.completions.create(
                 model=model,
                 messages=[{"role": "system", "content": system_content}] + history_msgs,
-                max_tokens=2000,
                 stream=True,
+                **completion_kwargs(model, max_tokens=2000),
             )
             full = []
             for event in stream:
@@ -882,14 +893,17 @@ class GhostAPI:
                 return {"error": "OpenAI API key não configurada"}
 
             from openai import OpenAI
+
+            from .gpt_client import completion_kwargs
             client = OpenAI(api_key=key, timeout=60.0)
+            model = get_openai_model()
             resp = client.chat.completions.create(
-                model=get_openai_model(),
+                model=model,
                 messages=[
                     {"role": "system", "content": "Você é um assistente que ajuda durante reuniões ao vivo."},
                     {"role": "user", "content": prompt},
                 ],
-                max_tokens=1500,
+                **completion_kwargs(model, max_tokens=1500),
             )
             return {"ok": True, "text": resp.choices[0].message.content or ""}
         except Exception as e:
@@ -1447,6 +1461,54 @@ class GhostAPI:
             return {"ok": True, "path": str(d)}
         except Exception as e:
             return {"error": _log_error("open_meetings_folder", e)}
+
+    # ---------- Clonagem de página web ----------
+
+    def start_clone(self, url: str) -> dict:
+        """Kick off background cloning of a URL → offline HTML bundle."""
+        try:
+            return self._cloner.start(url)
+        except Exception as e:
+            return {"error": _log_error("start_clone", e)}
+
+    def get_clone_status(self) -> dict:
+        try:
+            return self._cloner.get_status()
+        except Exception as e:
+            return {"error": _log_error("get_clone_status", e)}
+
+    def cancel_clone(self) -> dict:
+        try:
+            return self._cloner.cancel()
+        except Exception as e:
+            return {"error": _log_error("cancel_clone", e)}
+
+    def consume_clone_result(self) -> dict:
+        try:
+            r = self._cloner.consume_result()
+            return r if r is not None else {"pending": True}
+        except Exception as e:
+            return {"error": _log_error("consume_clone_result", e)}
+
+    def open_clones_folder(self) -> dict:
+        try:
+            d = clones_dir()
+            os.startfile(str(d))
+            return {"ok": True, "path": str(d)}
+        except Exception as e:
+            return {"error": _log_error("open_clones_folder", e)}
+
+    def open_cloned_page(self, index_path: str) -> dict:
+        """Open a cloned index.html in the user's default browser."""
+        try:
+            import webbrowser
+            p = Path(index_path)
+            if not p.exists():
+                return {"error": "Arquivo não encontrado"}
+            webbrowser.open(p.as_uri(), new=2)
+            return {"ok": True}
+        except Exception as e:
+            return {"error": _log_error("open_cloned_page", e)}
 
     # ---------- Window ----------
 

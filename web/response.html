@@ -775,10 +775,13 @@
                     return `<div class="msg"><div class="msg-user"><div class="msg-user-bubble">${img}${transcriptBlock}${escapeHTML(m.text || '')}</div></div></div>`;
                 } else {
                     const isLoading = m.loading;
+                    const needsKey = m.needsApiKey;
                     const bodyHtml = isLoading
                         ? '<div class="loading-dots"><span></span><span></span><span></span></div>'
-                        : marked.parse(m.text || '');
-                    const hasText = !isLoading && m.text;
+                        : (needsKey
+                            ? '<div style="padding:12px 14px;border-radius:10px;background:rgba(97,219,180,0.08);border:1px solid rgba(97,219,180,0.25);"><div style="font-weight:600;margin-bottom:4px;">🔑 Chave da OpenAI não configurada</div><div style="font-size:12px;opacity:0.85;line-height:1.5;">Volte ao Ghost em modo normal para configurar a chave nas opções.</div></div>'
+                            : marked.parse(m.text || ''));
+                    const hasText = !isLoading && !needsKey && m.text;
                     const actions = hasText
                         ? `<div class="msg-actions">
                              <button class="speak-btn" data-idx="${idx}" data-tooltip="Ler em voz alta" onclick='toggleSpeakMsg(${idx}, ${JSON.stringify(m.text)})'>

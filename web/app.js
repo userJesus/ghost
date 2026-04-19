@@ -57,6 +57,15 @@ function ghostApp() {
         modelSaveMsg: '',           // msg de confirmação ao trocar modelo
         shortcutsModalOpen: false,  // modal de atalhos do sistema
         closeConfirmOpen: false,    // modal de confirmação ao clicar X
+        // ===== Clonagem de página web =====
+        cloneModalOpen: false,
+        cloneUrl: '',
+        cloneRunning: false,
+        cloneStatus: '',
+        cloneProgress: { done: 0, total: 0 },
+        cloneResult: null,          // { folder, folder_name, index_path, assets_count, errors_count, used_js }
+        cloneError: '',
+        _cloneTimer: null,
         // ===== Histórico =====
         currentConvId: '',          // id da conversa atual
         currentConvTitle: '',       // título dinâmico (usado no popup também)
@@ -1100,6 +1109,7 @@ function ghostApp() {
                     text: m.text || '',
                     image: m.image || null,
                     loading: !!m.loading,
+                    needsApiKey: !!m.needsApiKey,
                 }));
                 window.pywebview.api.update_response_popup(serializable);
             } catch (e) {}
@@ -1306,6 +1316,7 @@ function ghostApp() {
 
         // ============ Streaming handlers (chamados por window.ghostStream*) ============
         _setupStreamingGlobals() {
+            this._popupStreamThrottle = 0;
             window.ghostStreamChunk = (payload) => {
                 if (!payload || payload.id !== this._currentStreamId) return;
                 const last = this.messages[this.messages.length - 1];
@@ -1314,6 +1325,15 @@ function ghostApp() {
                 last.loading = false;
                 last.streaming = true;
                 this.scrollToBottom();
+                // Atualiza popup do modo compact a cada ~300ms durante streaming
+                // (sem isso, o usuário vê a resposta "congelada" até o stream terminar)
+                if (this.compactMode) {
+                    const now = Date.now();
+                    if (now - this._popupStreamThrottle > 300) {
+                        this._popupStreamThrottle = now;
+                        this._updatePopup();
+                    }
+                }
             };
             window.ghostStreamDone = (payload) => {
                 if (!payload || payload.id !== this._currentStreamId) return;
@@ -1454,6 +1474,111 @@ function ghostApp() {
             if (event.target.closest('button, select, input, a')) return;
             if (event.button !== 0) return;
             window.pywebview.api.start_window_drag();
+        },
+
+        // ===== Clonagem de página web =====
+
+        openCloneModal() {
+            // Reabrindo durante clone em andamento → preserva estado/progresso
+            if (this.cloneRunning) {
+                this.cloneModalOpen = true;
+                return;
+            }
+            this.cloneUrl = '';
+            this.cloneStatus = '';
+            this.cloneProgress = { done: 0, total: 0 };
+            this.cloneResult = null;
+            this.cloneError = '';
+            this.cloneModalOpen = true;
+        },
+
+        closeCloneModal() {
+            // Sempre permite fechar — clone continua em background
+            this.cloneModalOpen = false;
+        },
+
+        async pasteCloneUrl() {
+            try {
+                const r = await window.pywebview.api.read_clipboard();
+                if (r?.error) {
+                    this.cloneError = 'Erro lendo clipboard: ' + r.error;
+                    return;
+                }
+                const text = (r?.text || '').trim();
+                if (!text) {
+                    this.cloneError = 'Clipboard vazio. Copie a URL primeiro.';
+                    return;
+                }
+                this.cloneUrl = text;
+                this.cloneError = '';
+            } catch (e) {
+                this.cloneError = 'Falha ao colar: ' + e;
+            }
+        },
+
+        async startClone() {
+            const url = (this.cloneUrl || '').trim();
+            if (!url) { this.cloneError = 'Informe uma URL'; return; }
+            this.cloneError = '';
+            this.cloneResult = null;
+            this.cloneStatus = 'Iniciando...';
+            this.cloneProgress = { done: 0, total: 0 };
+            const result = await window.pywebview.api.start_clone(url);
+            if (result?.error) {
+                this.cloneError = result.error;
+                return;
+            }
+            this.cloneRunning = true;
+            this._startCloneTimer();
+        },
+
+        async cancelClone() {
+            await window.pywebview.api.cancel_clone();
+            this.cloneStatus = 'Cancelando...';
+        },
+
+        _startCloneTimer() {
+            if (this._cloneTimer) clearInterval(this._cloneTimer);
+            this._cloneTimer = setInterval(async () => {
+                try {
+                    const status = await window.pywebview.api.get_clone_status();
+                    if (status?.error) return;
+                    this.cloneStatus = status.status || '';
+                    this.cloneProgress = status.progress || { done: 0, total: 0 };
+                    if (!status.running && status.has_result) {
+                        clearInterval(this._cloneTimer);
+                        this._cloneTimer = null;
+                        this.cloneRunning = false;
+                        const result = await window.pywebview.api.consume_clone_result();
+                        if (result?.error) {
+                            this.cloneError = result.error;
+                            // Se o modal estiver fechado, sinaliza o erro na barra de status
+                            if (!this.cloneModalOpen) this.setStatus('Erro ao clonar: ' + result.error);
+                        } else if (result?.ok) {
+                            this.cloneResult = result;
+                            if (!this.cloneModalOpen) {
+                                this.setStatus('✓ Clonagem concluída: ' + result.folder_name);
+                            }
+                        }
+                    }
+                } catch (e) { /* silencioso */ }
+            }, 500);
+        },
+
+        async openClonedPage() {
+            if (!this.cloneResult?.index_path) return;
+            await window.pywebview.api.open_cloned_page(this.cloneResult.index_path);
+        },
+
+        async openClonesFolder() {
+            await window.pywebview.api.open_clones_folder();
+        },
+
+        get cloneProgressPct() {
+            const t = this.cloneProgress.total || 0;
+            const d = this.cloneProgress.done || 0;
+            if (t === 0) return 0;
+            return Math.min(100, Math.round((d / t) * 100));
         },
 
         async toggleWatch() {
@@ -1773,6 +1898,7 @@ function ghostApp() {
                 this.droppedFiles = [];
                 this.pendingCapture = null;
                 this.scrollToBottom();
+                this._updatePopup();
                 return;
             }
 
