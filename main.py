@@ -28,13 +28,40 @@ if sys.platform != "win32":
 # Windows resolves ~ to %USERPROFILE% (e.g. C:\Users\<user>\.ghost).
 USER_DATA = Path.home() / ".ghost"
 
+def _resolve_resource_root() -> Path:
+    """Find where bundled web/ + assets/ live at runtime.
+
+    PyInstaller 6.x places data files under <app>/_internal/ in onedir mode
+    and under a temp MEIPASS dir in onefile mode. sys._MEIPASS is the
+    documented source of truth, but we also probe a few candidates as
+    fallback so a layout surprise doesn't leave Ghost rendering a blank
+    gray WebView window with no way to recover.
+    """
+    if not getattr(sys, "frozen", False):
+        return Path(__file__).resolve().parent
+
+    exe_dir = Path(sys.executable).parent
+    candidates: list[Path] = []
+    mei = getattr(sys, "_MEIPASS", None)
+    if mei:
+        candidates.append(Path(mei))
+    candidates.append(exe_dir / "_internal")  # PyInstaller 6.x onedir layout
+    candidates.append(exe_dir)                # older onedir layout / edge cases
+
+    for cand in candidates:
+        if (cand / "web" / "index.html").is_file():
+            return cand
+    # Last resort: fall back to first candidate (Ghost will fail loudly instead
+    # of silently loading a blank window).
+    return candidates[0] if candidates else exe_dir
+
+
 if getattr(sys, "frozen", False):
-    # PyInstaller: bundled resources live in _MEIPASS (onefile) or exe dir (onedir).
-    ROOT = Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent))
+    ROOT = _resolve_resource_root()
     USER_DATA.mkdir(parents=True, exist_ok=True)
     LOG_FILE = USER_DATA / "ghost.log"
 else:
-    ROOT = Path(__file__).resolve().parent
+    ROOT = _resolve_resource_root()
     LOG_FILE = ROOT / "ghost.log"
 WEB_INDEX = ROOT / "web" / "index.html"
 WEB_RESPONSE = ROOT / "web" / "response.html"
