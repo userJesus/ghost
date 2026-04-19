@@ -106,12 +106,27 @@ Logs, histórico, configurações e sua chave da OpenAI nunca saem da sua máqui
 <summary><strong>🪟 Windows</strong> — clique para expandir</summary>
 
 1. [**Baixe o instalador**](https://github.com/userJesus/ghost/releases/latest/download/GhostSetup-1.0.0.exe) (89 MB)
-2. Execute `GhostSetup-1.0.0.exe`. Não precisa de admin — instala em `%LocalAppData%\Programs\Ghost`
-3. Marque (opcional):
+2. Execute `GhostSetup-1.0.0.exe`.
+   > ⚠️ Se aparecer a tela azul **"O Windows protegeu o computador"** (SmartScreen), é porque o Ghost ainda não é assinado com certificado Authenticode. Clique em **"Mais informações"** → botão **"Executar assim mesmo"**. Detalhes e causa [logo abaixo](#%EF%B8%8F-aviso-do-smartscreen-fornecedor-desconhecido).
+3. O instalador coloca o Ghost em `%LocalAppData%\Programs\Ghost` (sem precisar de admin).
+4. Marque (opcional):
    - ✅ Atalho na área de trabalho
    - ✅ Iniciar com o Windows
-4. Finalizar → Ghost abre sozinho
-5. Na primeira tela, cole sua **chave da OpenAI** (`sk-...`)
+5. Finalizar → Ghost abre sozinho
+6. Na primeira tela, cole sua **chave da OpenAI** (`sk-...`)
+
+##### 🛡️ Aviso do SmartScreen ("Fornecedor desconhecido")
+
+Windows SmartScreen bloqueia qualquer `.exe` não assinado com um certificado Authenticode, de forma análoga ao Gatekeeper no macOS. Certificado Authenticode é pago (~US$ 200/ano; EV ~US$ 300/ano) e o Ghost é distribuído gratuitamente sob licença não-comercial, então assinatura oficial não está nos planos imediatos.
+
+O instalador é **auditável** — código-fonte completo neste repositório, `SHA256SUMS.txt` no release e possibilidade de reconstruir localmente via `scripts\build_windows.bat`.
+
+**Como autorizar:**
+1. Na tela azul, clique em **"Mais informações"** (texto em cima, à esquerda)
+2. Aparece uma linha adicional com o nome do fornecedor ("Desconhecido") e um botão **"Executar assim mesmo"**
+3. Clique no botão → o instalador roda normalmente
+
+O SmartScreen lembra dessa autorização — na próxima vez que você abrir o mesmo arquivo, passa direto.
 
 </details>
 

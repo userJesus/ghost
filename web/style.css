@@ -1220,14 +1220,15 @@ input, textarea, button, select {
     padding: 0 8px;
 }
 
-/* Fluent flyout — abre pra cima (composer está no rodapé) */
+/* Fluent flyout — abre pra cima (composer está no rodapé do app normal) */
 .chip-flyout {
     position: absolute;
     bottom: calc(100% + 6px);
     left: 0;
     min-width: 100%;
     max-width: 320px;
-    max-height: 280px;
+    /* Clamps to the available viewport so it never overflows short windows. */
+    max-height: min(280px, calc(100vh - 48px));
     overflow-y: auto;
     background: rgba(45, 45, 45, 0.96);
     backdrop-filter: blur(40px) saturate(135%);
@@ -1239,6 +1240,14 @@ input, textarea, button, select {
     padding: 4px;
     z-index: 30;
     /* Usa scrollbar global */
+}
+
+/* Compact mode: chips ficam no TOPO da barra (200px), sem espaço pra cima.
+   Invertemos a abertura para BAIXO para o flyout caber na viewport. */
+.app.compact .chip-flyout {
+    bottom: auto;
+    top: calc(100% + 6px);
+    max-height: calc(100vh - 56px);
 }
 .chip-flyout-label {
     font-size: 10.5px;
