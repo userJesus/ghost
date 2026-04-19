@@ -32,10 +32,10 @@
   <br/><sub>Windows 10 / 11 · 89 MB · sem UAC / sem admin</sub>
 </td>
 <td align="center" width="420">
-  <a href="https://github.com/userJesus/ghost/releases/latest">
-    <img src="https://img.shields.io/badge/macOS%20em%20breve-v1.1-9E9E9E?style=for-the-badge&logo=apple&logoColor=white" alt="macOS — em breve"/>
+  <a href="https://github.com/userJesus/ghost/releases/latest/download/Ghost-1.0.0.dmg">
+    <img src="https://img.shields.io/badge/Baixar%20para%20macOS-Ghost%201.0.0.dmg-000000?style=for-the-badge&logo=apple&logoColor=white" alt="macOS installer"/>
   </a>
-  <br/><sub>macOS 11+ · porte em andamento (veja <a href="https://github.com/userJesus/ghost/issues">issues</a>)</sub>
+  <br/><sub>macOS 11+ · inclui driver BlackHole 2ch · Apple Silicon + Intel</sub>
 </td>
 </tr>
 </table>
