@@ -66,11 +66,16 @@ jobs:
 
   # -----------------------------------------------------------------
   # macOS — py2app + productbuild with BlackHole → Ghost-<version>.dmg
+  # NOTE: currently WIP — main.py still has unconditional win32 imports
+  # and MacPlatform stub raises NotImplementedError. Once those are
+  # platform-guarded we re-enable this block and wire it into `needs:`.
   # -----------------------------------------------------------------
   build-macos:
     name: Build macOS installer
     runs-on: macos-14
     timeout-minutes: 30
+    continue-on-error: true   # don't block the Windows release on Mac build failures
+    if: ${{ false }}          # disabled until Mac port is complete
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -102,7 +107,10 @@ jobs:
   # -----------------------------------------------------------------
   release:
     name: Publish GitHub release
-    needs: [build-windows, build-macos]
+    needs: [build-windows]
+    # Mac artifacts (when build-macos is re-enabled) are merged into the same release
+    # automatically because softprops/action-gh-release updates an existing release
+    # when the tag already has one.
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -112,8 +120,9 @@ jobs:
           name: ghost-windows
           path: dist
 
-      - name: Download macOS artifact
+      - name: Download macOS artifact (if built)
         uses: actions/download-artifact@v4
+        continue-on-error: true
         with:
           name: ghost-macos
           path: dist
