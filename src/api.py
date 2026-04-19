@@ -100,6 +100,10 @@ class GhostAPI:
         self._response_window = None
         self._response_hwnd = 0
 
+        # Floating dropdown popup (third window — pre-created hidden off-screen)
+        self._dropdown_window = None
+        self._dropdown_hwnd = 0
+
     def set_window(self, window):
         self._window = window
 
@@ -1398,50 +1402,133 @@ class GhostAPI:
             import os
             os._exit(1)
 
-    def chip_overlay_resize(self, expanded: bool = False) -> dict:
-        """Called from the webview when a dropdown (chip flyout) opens or closes
-        in compact mode. Temporarily grows the window vertically so the flyout
-        has room to render as a true overlay without being clipped by the window
-        edge. On close, shrinks back to the normal compact bar height."""
-        try:
-            COMPACT_H_NORMAL = 200
-            COMPACT_H_EXPANDED = 520
-            bar_w = 820
-            target_h = COMPACT_H_EXPANDED if expanded else COMPACT_H_NORMAL
+    # =====================================================================
+    # Floating dropdown popup — a third pywebview window that renders chip
+    # options outside the compact bar's bounds, so they never get clipped.
+    # =====================================================================
+    def set_dropdown_window(self, window) -> None:
+        """Called from main.py once the pre-created dropdown popup window exists."""
+        self._dropdown_window = window
 
-            # ---------- macOS branch ----------
+    def get_main_window_rect(self) -> dict:
+        """Returns (x, y, width, height) of the main Ghost window in screen
+        coordinates. Used by JS to translate chip viewport-pos -> screen-pos
+        so the dropdown popup can be positioned adjacent to the chip."""
+        try:
             if _IS_MAC:
                 from . import mac_focus
-                s = _mac_screen_for_center() or {"work_right": 1920, "work_bottom": 1080}
-                x = s["work_right"] - bar_w - 12
-                y = s["work_bottom"] - target_h - 12
-                mac_focus.set_window_frame(int(x), int(y), int(bar_w), int(target_h))
-                return {"ok": True}
-
-            # ---------- Windows branch ----------
+                f = mac_focus.get_window_frame()
+                if not f:
+                    return {"error": "no main window"}
+                return {"x": f[0], "y": f[1], "width": f[2], "height": f[3]}
             import win32gui
             if not self._hwnd:
-                return {"error": "No HWND"}
-            monitor = self._current_monitor() or (self._monitors[0] if self._monitors else None)
-            if monitor is None:
-                monitor = {"left": 0, "top": 0, "width": 1920, "height": 1080}
-            work = monitor.get("work")
-            if work:
-                _, _, wr, wb = work
+                return {"error": "no hwnd"}
+            l, t, r, b = win32gui.GetWindowRect(self._hwnd)
+            return {"x": l, "y": t, "width": r - l, "height": b - t}
+        except Exception as e:
+            return {"error": _log_error("get_main_window_rect", e)}
+
+    def show_dropdown_popup(
+        self, kind: str, items: list, selected: str | int | None,
+        screen_x: int, screen_y: int, width: int = 240, height: int = 300,
+    ) -> dict:
+        """Show the floating dropdown popup at (screen_x, screen_y) with the
+        given items. `kind` identifies which chip ('preset'|'captureMode'|'monitor')
+        so the selection callback knows where to route the value."""
+        try:
+            if self._dropdown_window is None:
+                return {"error": "dropdown window not pre-created"}
+
+            # Push the items + selected state + kind into the popup page.
+            payload = json.dumps({"kind": kind, "items": items, "selected": selected})
+            try:
+                self._dropdown_window.evaluate_js(f"window.setDropdown({payload})")
+            except Exception:
+                pass
+
+            # Position the window on screen.
+            if _IS_MAC:
+                from . import mac_focus
+                mac_focus.set_window_frame(
+                    int(screen_x), int(screen_y), int(width), int(height),
+                    match="Ghost Dropdown",
+                )
+                try:
+                    self._dropdown_window.show()
+                except Exception:
+                    pass
             else:
-                wr = monitor["left"] + monitor["width"]
-                wb = monitor["top"] + monitor["height"]
-            x = wr - bar_w - 12
-            y = wb - target_h - 12
-            SWP_NOZORDER_LOCAL = 0x0004
-            SWP_NOACTIVATE_LOCAL = 0x0010
-            win32gui.SetWindowPos(
-                self._hwnd, 0, x, y, bar_w, target_h,
-                SWP_NOZORDER_LOCAL | SWP_NOACTIVATE_LOCAL
-            )
+                import win32gui
+                if self._dropdown_hwnd:
+                    SWP_NOZORDER_LOCAL = 0x0004
+                    SWP_NOACTIVATE_LOCAL = 0x0010
+                    win32gui.SetWindowPos(
+                        self._dropdown_hwnd, 0,
+                        int(screen_x), int(screen_y), int(width), int(height),
+                        SWP_NOZORDER_LOCAL | SWP_NOACTIVATE_LOCAL,
+                    )
+                    import win32con
+                    win32gui.ShowWindow(self._dropdown_hwnd, win32con.SW_SHOWNOACTIVATE)
+                else:
+                    try:
+                        self._dropdown_window.show()
+                    except Exception:
+                        pass
             return {"ok": True}
         except Exception as e:
-            return {"error": _log_error("chip_overlay_resize", e)}
+            return {"error": _log_error("show_dropdown_popup", e)}
+
+    def hide_dropdown_popup(self) -> dict:
+        """Hide the dropdown popup and park it off-screen so no hidden rect
+        shows up as a black rectangle under the capture-excluded flag."""
+        try:
+            if self._dropdown_window is None:
+                return {"ok": True}
+            if _IS_MAC:
+                try:
+                    self._dropdown_window.hide()
+                except Exception:
+                    pass
+                return {"ok": True}
+            if self._dropdown_hwnd:
+                import win32con
+                import win32gui
+                win32gui.ShowWindow(self._dropdown_hwnd, win32con.SW_HIDE)
+                SWP_NOSIZE_LOCAL = 0x0001
+                SWP_NOZORDER_LOCAL = 0x0004
+                SWP_NOACTIVATE_LOCAL = 0x0010
+                win32gui.SetWindowPos(
+                    self._dropdown_hwnd, 0, -10000, -10000, 0, 0,
+                    SWP_NOSIZE_LOCAL | SWP_NOZORDER_LOCAL | SWP_NOACTIVATE_LOCAL,
+                )
+            else:
+                try:
+                    self._dropdown_window.hide()
+                except Exception:
+                    pass
+            return {"ok": True}
+        except Exception as e:
+            return {"error": _log_error("hide_dropdown_popup", e)}
+
+    def dropdown_pick(self, kind: str, value: str | int) -> dict:
+        """Called from the dropdown popup's HTML when the user clicks an option.
+        Forwards the selection to the main window and hides the popup."""
+        try:
+            if self._window is not None:
+                code = f"window.applyDropdownResult({json.dumps(kind)}, {json.dumps(value)})"
+                try:
+                    self._window.evaluate_js(code)
+                except Exception:
+                    pass
+            self.hide_dropdown_popup()
+            return {"ok": True}
+        except Exception as e:
+            return {"error": _log_error("dropdown_pick", e)}
+
+    def set_dropdown_hwnd(self, hwnd: int) -> None:
+        """Called from main.py once the dropdown popup's HWND is resolved."""
+        self._dropdown_hwnd = int(hwnd)
 
     def minimize_to_edge(self) -> dict:
         """Shrink window to a 56×56 icon docked on the right edge of the current screen/monitor."""

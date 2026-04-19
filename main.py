@@ -45,6 +45,7 @@ else:
     LOG_FILE = ROOT / "ghost.log"
 WEB_INDEX = ROOT / "web" / "index.html"
 WEB_RESPONSE = ROOT / "web" / "response.html"
+WEB_DROPDOWN = ROOT / "web" / "dropdown.html"
 
 
 def _find_own_top_window() -> int:
@@ -128,30 +129,38 @@ def _apply_response_popup_tweaks(api: GhostAPI):
     try:
         pid = _os.getpid()
         main_hwnd = api._hwnd
-        popup_hwnd = 0
+        response_hwnd = 0
+        dropdown_hwnd = 0
 
         def cb(hwnd, _):
-            nonlocal popup_hwnd
+            nonlocal response_hwnd, dropdown_hwnd
             try:
                 _, wpid = win32process.GetWindowThreadProcessId(hwnd)
                 if wpid != pid or hwnd == main_hwnd:
                     return True
                 title = win32gui.GetWindowText(hwnd)
                 if "Response" in title:
-                    popup_hwnd = hwnd
+                    response_hwnd = hwnd
+                elif "Dropdown" in title:
+                    dropdown_hwnd = hwnd
             except Exception:
                 pass
             return True
 
         win32gui.EnumWindows(cb, None)
-        if popup_hwnd:
-            api.set_response_hwnd(popup_hwnd)
+        for label, hwnd, setter in (
+            ("response", response_hwnd, api.set_response_hwnd),
+            ("dropdown", dropdown_hwnd, api.set_dropdown_hwnd),
+        ):
+            if not hwnd:
+                continue
             try:
-                hide_from_capture(popup_hwnd, True)
-                hide_from_taskbar(popup_hwnd)
+                setter(hwnd)
+                hide_from_capture(hwnd, True)
+                hide_from_taskbar(hwnd)
+                print(f"[init] {label} HWND={hwnd}", flush=True)
             except Exception as e:
-                print(f"[warn] popup protect: {e}", flush=True)
-            print(f"[init] popup HWND={popup_hwnd}", flush=True)
+                print(f"[warn] {label} popup protect: {e}", flush=True)
     except Exception as e:
         print(f"[warn] popup tweak error: {e}", flush=True)
 
@@ -305,6 +314,26 @@ def main():
         background_color="#131313",
     )
     api.set_response_window(response_win)
+
+    # Pre-create the floating dropdown popup (third window). Used by the chip
+    # dropdowns in compact mode so options render outside the compact bar's
+    # bounds, true floating overlay like native OS menus. Same invisibility +
+    # off-screen park treatment as the response popup.
+    dropdown_win = webview.create_window(
+        "Ghost Dropdown",
+        str(WEB_DROPDOWN),
+        js_api=api,
+        width=240,
+        height=300,
+        x=-10000,
+        y=-10000,
+        frameless=True,
+        on_top=True,
+        resizable=False,
+        hidden=True,
+        background_color="#1C1C1C",
+    )
+    api.set_dropdown_window(dropdown_win)
 
     if sys.platform == "win32":
         threading.Thread(target=_apply_window_tweaks,
