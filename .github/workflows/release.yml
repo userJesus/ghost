@@ -65,17 +65,13 @@ jobs:
           path: installer/windows/Output/GhostSetup-*.exe
 
   # -----------------------------------------------------------------
-  # macOS — py2app + productbuild with BlackHole → Ghost-<version>.dmg
-  # NOTE: currently WIP — main.py still has unconditional win32 imports
-  # and MacPlatform stub raises NotImplementedError. Once those are
-  # platform-guarded we re-enable this block and wire it into `needs:`.
+  # macOS — PyInstaller + productbuild + BlackHole → Ghost-<version>.dmg
   # -----------------------------------------------------------------
   build-macos:
     name: Build macOS installer
     runs-on: macos-14
     timeout-minutes: 30
-    continue-on-error: true   # don't block the Windows release on Mac build failures
-    if: ${{ false }}          # disabled until Mac port is complete
+    continue-on-error: true   # never block the Windows release on Mac build failures
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -89,10 +85,10 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r dev-requirements.txt
-          pip install py2app Pillow "svg.path"
+          pip install Pillow "svg.path" pyinstaller
 
       - name: Build macOS installer (.pkg + .dmg)
-        run: bash scripts/build_mac.sh
+        run: bash installer/macos/build_pkg.sh
 
       - name: Upload macOS artifact
         uses: actions/upload-artifact@v4
@@ -107,10 +103,9 @@ jobs:
   # -----------------------------------------------------------------
   release:
     name: Publish GitHub release
-    needs: [build-windows]
-    # Mac artifacts (when build-macos is re-enabled) are merged into the same release
-    # automatically because softprops/action-gh-release updates an existing release
-    # when the tag already has one.
+    needs: [build-windows, build-macos]
+    # Always publish when Windows succeeds — Mac is optional/best-effort.
+    if: always() && needs.build-windows.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:

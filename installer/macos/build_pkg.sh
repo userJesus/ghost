@@ -2,13 +2,16 @@
 # ============================================================
 #  Ghost — macOS installer builder
 #
-#  Pipeline:
-#    1. Build Ghost.app via py2app (setup_mac.py)
-#    2. Wrap Ghost.app in a component pkg (pkgbuild)
-#    3. Download BlackHole 2ch pkg from official GitHub release
-#    4. Combine both into a single distribution pkg (productbuild)
+#  Pipeline (PyInstaller — same tool as Windows):
+#    1. make_icons.py → PNGs + iconset
+#    2. iconutil      → assets/icon.icns
+#    3. pyinstaller   → dist/Ghost.app
+#    4. pkgbuild      → Ghost.pkg (component pkg, installs .app to /Applications)
+#    5. curl          → fetch BlackHole 2ch driver pkg
+#    6. productbuild  → GhostInstaller-<version>.pkg (combines the two)
+#    7. hdiutil       → Ghost-<version>.dmg (pkg + uninstaller + README)
 #
-#  Output: installer/macos/Output/GhostInstaller-<version>.pkg
+#  Output: installer/macos/Output/{GhostInstaller-*.pkg, Ghost-*.dmg}
 #
 #  Run from project root OR from installer/macos/.
 # ============================================================
@@ -18,8 +21,8 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "${HERE}/../.." && pwd)"
 cd "${ROOT}"
 
-# Pull version from src/version.py (single source of truth).
-VERSION="$(python3 -c "import re,sys; t=open('src/version.py').read(); print(re.search(r'__version__\s*=\s*\"([^\"]+)\"', t).group(1))")"
+# Pull version from src/version.py.
+VERSION="$(python3 -c "import re; t=open('src/version.py').read(); print(re.search(r'__version__\s*=\s*\"([^\"]+)\"', t).group(1))")"
 echo "[mac-build] Ghost v${VERSION}"
 
 if [[ "$(uname)" != "Darwin" ]]; then
@@ -34,25 +37,33 @@ mkdir -p "${OUT}" "${BUILD}"
 # ---------------------------------------------------------------
 # 1. Icons + .icns
 # ---------------------------------------------------------------
-echo "[mac-build] 1/5  regenerating icons..."
+echo "[mac-build] 1/7  regenerating icons..."
 python3 scripts/make_icons.py
+
+echo "[mac-build] 2/7  icon.iconset -> icon.icns"
 iconutil -c icns assets/icon.iconset -o assets/icon.icns
 
 # ---------------------------------------------------------------
-# 2. py2app — build Ghost.app
+# 3. PyInstaller — build Ghost.app
 # ---------------------------------------------------------------
-echo "[mac-build] 2/5  building Ghost.app..."
+echo "[mac-build] 3/7  building Ghost.app via PyInstaller..."
 rm -rf build dist
-python3 setup_mac.py py2app
+pyinstaller --noconfirm --clean ghost_mac.spec
 APP_BUNDLE="dist/Ghost.app"
-[ -d "${APP_BUNDLE}" ] || { echo "[mac-build] ERROR: Ghost.app not produced"; exit 1; }
+[ -d "${APP_BUNDLE}" ] || { echo "[mac-build] ERROR: Ghost.app not produced"; ls -la dist || true; exit 1; }
 
 # ---------------------------------------------------------------
-# 3. pkgbuild — wrap the app in a component pkg
+# 4. pkgbuild — wrap the app in a component pkg
 # ---------------------------------------------------------------
-echo "[mac-build] 3/5  wrapping Ghost.app into component pkg..."
+echo "[mac-build] 4/7  wrapping Ghost.app into component pkg..."
+# pkgbuild needs a staging directory containing ONLY the .app
+STAGE="${BUILD}/app-stage"
+rm -rf "${STAGE}"
+mkdir -p "${STAGE}"
+cp -R "${APP_BUNDLE}" "${STAGE}/"
+
 pkgbuild \
-    --root "dist" \
+    --root "${STAGE}" \
     --identifier "io.github.userjesus.ghost" \
     --version "${VERSION}" \
     --install-location "/Applications" \
@@ -73,67 +84,71 @@ pkgbuild \
 PLIST
 
 # ---------------------------------------------------------------
-# 4. Fetch BlackHole 2ch driver pkg
+# 5. Fetch BlackHole 2ch driver pkg
 # ---------------------------------------------------------------
-echo "[mac-build] 4/5  fetching BlackHole 2ch driver..."
+echo "[mac-build] 5/7  fetching BlackHole 2ch driver..."
 BLACKHOLE_CACHE="${BUILD}/BlackHole2ch.pkg"
 if [ ! -s "${BLACKHOLE_CACHE}" ]; then
-    # Resolve latest release URL from GitHub API
-    BH_URL="$(curl -s https://api.github.com/repos/ExistentialAudio/BlackHole/releases/latest \
+    # Try to resolve the latest release URL from GitHub; fall back to a pinned mirror.
+    BH_URL="$(curl -fsS https://api.github.com/repos/ExistentialAudio/BlackHole/releases/latest 2>/dev/null \
         | grep -o 'https://[^"]*BlackHole2ch[^"]*\.pkg' | head -1 || true)"
     if [ -z "${BH_URL}" ]; then
-        echo "[mac-build] WARNING: could not auto-detect BlackHole URL — using fallback."
         BH_URL="https://existential.audio/downloads/BlackHole2ch.v0.6.0.pkg"
     fi
     echo "           → ${BH_URL}"
-    curl -L -o "${BLACKHOLE_CACHE}" "${BH_URL}"
+    curl -L --retry 3 --retry-delay 2 -o "${BLACKHOLE_CACHE}" "${BH_URL}" || {
+        echo "[mac-build] WARNING: BlackHole download failed — shipping installer without driver"
+        BLACKHOLE_CACHE=""
+    }
 fi
 
-# Optional: verify BlackHole signature (Apple-notarized) — non-fatal.
-if ! pkgutil --check-signature "${BLACKHOLE_CACHE}" >/dev/null 2>&1; then
-    echo "[mac-build] WARNING: BlackHole pkg signature verification failed."
-fi
-cp "${BLACKHOLE_CACHE}" "${BUILD}/BlackHole2ch.pkg"
-
 # ---------------------------------------------------------------
-# 5. productbuild — combine into distribution pkg
+# 6. productbuild — combine into distribution pkg
 # ---------------------------------------------------------------
-echo "[mac-build] 5/5  combining into single installer..."
+echo "[mac-build] 6/7  combining into single installer..."
 
-# Plain-text license extracted from LICENSE for the installer pane.
-sed -n '1,/=========/p' LICENSE | head -n -2 > "${HERE}/Resources/license.txt"
+# Plain-text LICENSE excerpt for the license pane.
+sed -n '1,/=========/p' LICENSE | sed '$d' > "${HERE}/Resources/license.txt" || cp LICENSE "${HERE}/Resources/license.txt"
 
 OUT_PKG="${OUT}/GhostInstaller-${VERSION}.pkg"
-productbuild \
-    --distribution "${HERE}/distribution.xml" \
-    --package-path "${BUILD}" \
-    --resources "${HERE}/Resources" \
-    --version "${VERSION}" \
-    "${OUT_PKG}"
+
+# If we failed to fetch BlackHole, fall back to a distribution without it.
+if [ -z "${BLACKHOLE_CACHE}" ] || [ ! -s "${BLACKHOLE_CACHE}" ]; then
+    # Standalone Ghost.pkg — rename + place.
+    cp "${BUILD}/Ghost.pkg" "${OUT_PKG}"
+    echo "           (BlackHole missing — shipped Ghost-only pkg)"
+else
+    cp "${BLACKHOLE_CACHE}" "${BUILD}/BlackHole2ch.pkg"
+    productbuild \
+        --distribution "${HERE}/distribution.xml" \
+        --package-path "${BUILD}" \
+        --resources "${HERE}/Resources" \
+        --version "${VERSION}" \
+        "${OUT_PKG}"
+fi
 
 echo
-echo "[mac-build] done."
-echo "           Output: ${OUT_PKG}"
-echo "           Size:   $(du -h "${OUT_PKG}" | cut -f1)"
+echo "[mac-build] pkg: ${OUT_PKG} ($(du -h "${OUT_PKG}" | cut -f1))"
 
 # ---------------------------------------------------------------
-# Optional: wrap in a DMG with the uninstaller script alongside.
+# 7. DMG — wrap the pkg + uninstaller + README for distribution
 # ---------------------------------------------------------------
 DMG_OUT="${OUT}/Ghost-${VERSION}.dmg"
 STAGING="${BUILD}/dmg-staging"
+rm -rf "${STAGING}"
 mkdir -p "${STAGING}"
-cp "${OUT_PKG}"             "${STAGING}/Ghost Installer.pkg"
+cp "${OUT_PKG}"              "${STAGING}/Ghost Installer.pkg"
 cp "${ROOT}/scripts/uninstall_mac.sh" "${STAGING}/uninstall_mac.sh"
-cp "${ROOT}/README.md"      "${STAGING}/README.md"
-cp "${ROOT}/LICENSE"        "${STAGING}/LICENSE.txt"
+cp "${ROOT}/README.md"       "${STAGING}/README.md"
+cp "${ROOT}/LICENSE"         "${STAGING}/LICENSE.txt"
 chmod +x "${STAGING}/uninstall_mac.sh"
 
-if command -v hdiutil >/dev/null 2>&1; then
-    rm -f "${DMG_OUT}"
-    hdiutil create \
-        -volname "Ghost ${VERSION}" \
-        -srcfolder "${STAGING}" \
-        -ov -format UDZO \
-        "${DMG_OUT}"
-    echo "           DMG:    ${DMG_OUT}"
-fi
+rm -f "${DMG_OUT}"
+hdiutil create \
+    -volname "Ghost ${VERSION}" \
+    -srcfolder "${STAGING}" \
+    -ov -format UDZO \
+    "${DMG_OUT}"
+
+echo "[mac-build] dmg: ${DMG_OUT} ($(du -h "${DMG_OUT}" | cut -f1))"
+echo "[mac-build] done."

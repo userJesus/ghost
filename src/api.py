@@ -22,11 +22,18 @@ from .meeting_processor import (
 )
 from .scroll_capture import capture_monitor, list_monitors, scroll_and_capture, stitch_vertical
 from .voice import VoiceRecorder
-from .win_focus import (
-    drag_window_loop,
-    force_foreground,
-    hide_window,
-)
+if sys.platform == "win32":
+    from .win_focus import (
+        drag_window_loop,
+        force_foreground,
+        hide_window,
+    )
+else:
+    # Stubs on non-Windows so the module imports cleanly; these features are
+    # currently Windows-only and the calls happen only from Win-specific paths.
+    def drag_window_loop(*_args, **_kwargs): return False
+    def force_foreground(*_args, **_kwargs): return False
+    def hide_window(*_args, **_kwargs): return False
 
 MAX_HISTORY = 10
 ROOT = Path(__file__).resolve().parent.parent

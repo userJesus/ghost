@@ -5,18 +5,31 @@ import time
 from pathlib import Path
 
 import webview
-import win32gui
-import win32process
+
+if sys.platform == "win32":
+    import win32gui
+    import win32process
+    from src.win_focus import (
+        hide_from_capture,
+        hide_from_taskbar,
+        hide_window,
+        is_window_visible,
+        make_non_activating,
+        show_window,
+    )
+else:
+    win32gui = None  # type: ignore[assignment]
+    win32process = None  # type: ignore[assignment]
+    from src.mac_focus import (
+        hide_from_capture,
+        hide_from_taskbar,
+        hide_window,
+        is_window_visible,
+        make_non_activating,
+        show_window,
+    )
 
 from src.api import GhostAPI
-from src.win_focus import (
-    hide_from_capture,
-    hide_from_taskbar,
-    hide_window,
-    is_window_visible,
-    make_non_activating,
-    show_window,
-)
 
 # User-data folder — same across platforms, matches history.py/logging_config.py/config.py.
 # Windows resolves ~ to %USERPROFILE% (e.g. C:\Users\<user>\.ghost).
@@ -219,12 +232,65 @@ def main():
     )
     api.set_response_window(response_win)
 
-    threading.Thread(target=_apply_window_tweaks,
-                     args=(api, init_x, init_y, init_w, init_h),
-                     daemon=True).start()
+    if sys.platform == "win32":
+        threading.Thread(target=_apply_window_tweaks,
+                         args=(api, init_x, init_y, init_w, init_h),
+                         daemon=True).start()
+    else:
+        threading.Thread(target=_apply_mac_tweaks, args=(api,), daemon=True).start()
 
     debug_mode = "--debug" in sys.argv
     webview.start(debug=debug_mode, gui="edgechromium" if sys.platform == "win32" else None)
+
+
+def _apply_mac_tweaks(api: GhostAPI):
+    """macOS equivalent of _apply_window_tweaks — polls for the NSWindow and
+    applies setSharingType:NSWindowSharingNone (invisible in screen-share),
+    non-activating floating level, and hide-from-Dock accessory policy."""
+    # Give pywebview ~2s to create the NSWindow.
+    for _ in range(40):
+        time.sleep(0.1)
+        try:
+            from src.mac_focus import is_window_visible as _mac_visible
+            if _mac_visible():
+                break
+        except Exception:
+            pass
+    try:
+        print(f"[init] mac hide_from_capture={hide_from_capture(None, True)}", flush=True)
+        print(f"[init] mac hide_from_taskbar={hide_from_taskbar(None)}", flush=True)
+        make_non_activating(None)
+        print("[init] mac NSFloatingWindowLevel applied", flush=True)
+    except Exception as e:
+        print(f"[init] mac tweaks failed: {e}", flush=True)
+
+    _register_mac_hotkey(api)
+
+
+def _register_mac_hotkey(api: GhostAPI):
+    """Cmd+Shift+G toggles Ghost visibility on macOS (pynput is cross-platform)."""
+    try:
+        from pynput import keyboard
+    except Exception as e:
+        print(f"[warn] pynput unavailable on mac: {e}", flush=True)
+        return
+
+    def toggle():
+        if is_window_visible(None):
+            hide_window(None)
+        else:
+            show_window(None)
+
+    def runner():
+        try:
+            with keyboard.GlobalHotKeys({"<cmd>+<shift>+g": toggle}) as h:
+                h.join()
+        except Exception as e:
+            print(f"[warn] mac hotkey runner died: {e}", flush=True)
+
+    t = threading.Thread(target=runner, daemon=True)
+    t.start()
+    print("[init] mac global hotkey registered: Cmd+Shift+G", flush=True)
 
 
 if __name__ == "__main__":
