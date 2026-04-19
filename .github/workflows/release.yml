@@ -122,6 +122,17 @@ jobs:
           name: ghost-macos
           path: dist
 
+      - name: Create version-less aliases (stable /releases/latest/download URLs)
+        # Copies each versioned installer to a generic name so the download links in the
+        # README never break between releases: /releases/latest/download/GhostSetup.exe
+        # always resolves, regardless of the semver tag.
+        run: |
+          cd dist
+          ls -la
+          for f in GhostSetup-*.exe;       do [ -f "$f" ] && cp "$f" GhostSetup.exe;       done
+          for f in Ghost-*.dmg;            do [ -f "$f" ] && cp "$f" Ghost.dmg;            done
+          for f in GhostInstaller-*.pkg;   do [ -f "$f" ] && cp "$f" GhostInstaller.pkg;   done
+
       - name: Generate SHA256 checksums
         run: |
           cd dist
@@ -132,8 +143,11 @@ jobs:
         with:
           files: |
             dist/GhostSetup-*.exe
+            dist/GhostSetup.exe
             dist/Ghost-*.dmg
+            dist/Ghost.dmg
             dist/GhostInstaller-*.pkg
+            dist/GhostInstaller.pkg
             dist/SHA256SUMS.txt
           generate_release_notes: true
           draft: false

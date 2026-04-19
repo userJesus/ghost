@@ -9,11 +9,17 @@
 #   with "install_requires is no longer supported", which is awkward to work around.
 #   PyInstaller is the same tool we use for Windows, supports macOS .app bundles via
 #   BUNDLE(...), and handles the cross-platform build uniformly.
+import sys
 from pathlib import Path
 
 from PyInstaller.utils.hooks import copy_metadata
 
 ROOT = Path(SPECPATH).resolve()
+
+# Single source of truth: src/version.py. Injected into the .app's Info.plist.
+sys.path.insert(0, str(ROOT / "src"))
+from version import __version__ as APP_VERSION  # noqa: E402
+sys.path.pop(0)
 
 block_cipher = None
 
@@ -121,13 +127,13 @@ app = BUNDLE(
     name="Ghost.app",
     icon=str(ROOT / "assets" / "icon.icns"),
     bundle_identifier="io.github.userjesus.ghost",
-    version="1.0.0",
+    version=APP_VERSION,
     info_plist={
         "CFBundleName": "Ghost",
         "CFBundleDisplayName": "Ghost",
         "CFBundleExecutable": "Ghost",
-        "CFBundleShortVersionString": "1.0.0",
-        "CFBundleVersion": "1.0.0",
+        "CFBundleShortVersionString": APP_VERSION,
+        "CFBundleVersion": APP_VERSION,
         "NSHumanReadableCopyright": "Copyright © 2026 Jesus Oliveira. NCSAL v1.0.",
         "NSHighResolutionCapable": True,
         "LSMinimumSystemVersion": "11.0",

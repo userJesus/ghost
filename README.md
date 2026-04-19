@@ -26,14 +26,14 @@
 <table align="center">
 <tr>
 <td align="center" width="420">
-  <a href="https://github.com/userJesus/ghost/releases/latest/download/GhostSetup-1.0.0.exe">
-    <img src="https://img.shields.io/badge/Baixar%20para%20Windows-GhostSetup%201.0.0.exe-0078D4?style=for-the-badge&logo=windows11&logoColor=white" alt="Windows installer"/>
+  <a href="https://github.com/userJesus/ghost/releases/latest/download/GhostSetup.exe">
+    <img src="https://img.shields.io/badge/Baixar%20para%20Windows-.exe-0078D4?style=for-the-badge&logo=windows11&logoColor=white" alt="Windows installer"/>
   </a>
   <br/><sub>Windows 10 / 11 · 89 MB · sem UAC / sem admin</sub>
 </td>
 <td align="center" width="420">
-  <a href="https://github.com/userJesus/ghost/releases/latest/download/Ghost-1.0.0.dmg">
-    <img src="https://img.shields.io/badge/Baixar%20para%20macOS-Ghost%201.0.0.dmg-000000?style=for-the-badge&logo=apple&logoColor=white" alt="macOS installer"/>
+  <a href="https://github.com/userJesus/ghost/releases/latest/download/Ghost.dmg">
+    <img src="https://img.shields.io/badge/Baixar%20para%20macOS-.dmg-000000?style=for-the-badge&logo=apple&logoColor=white" alt="macOS installer"/>
   </a>
   <br/><sub>macOS 11+ · inclui driver BlackHole 2ch · Apple Silicon + Intel</sub>
 </td>
@@ -105,8 +105,8 @@ Logs, histórico, configurações e sua chave da OpenAI nunca saem da sua máqui
 <details>
 <summary><strong>🪟 Windows</strong> — clique para expandir</summary>
 
-1. [**Baixe o instalador**](https://github.com/userJesus/ghost/releases/latest/download/GhostSetup-1.0.0.exe) (89 MB)
-2. Execute `GhostSetup-1.0.0.exe`.
+1. [**Baixe o instalador**](https://github.com/userJesus/ghost/releases/latest/download/GhostSetup.exe) (89 MB)
+2. Execute o instalador `.exe`.
    > ⚠️ Se aparecer a tela azul **"O Windows protegeu o computador"** (SmartScreen), é porque o Ghost ainda não é assinado com certificado Authenticode. Clique em **"Mais informações"** → botão **"Executar assim mesmo"**. Detalhes e causa [logo abaixo](#%EF%B8%8F-aviso-do-smartscreen-fornecedor-desconhecido).
 3. O instalador coloca o Ghost em `%LocalAppData%\Programs\Ghost` (sem precisar de admin).
 4. Marque (opcional):
@@ -133,7 +133,7 @@ O SmartScreen lembra dessa autorização — na próxima vez que você abrir o m
 <details>
 <summary><strong>🍏 macOS</strong> — clique para expandir</summary>
 
-1. [**Baixe o DMG**](https://github.com/userJesus/ghost/releases/latest/download/Ghost-1.0.0.dmg)
+1. [**Baixe o DMG**](https://github.com/userJesus/ghost/releases/latest/download/Ghost.dmg)
 2. Abra o `.dmg` → **clique com o botão direito** em `Ghost Installer.pkg` → **Abrir** → **Abrir** na janela de confirmação
    > ⚠️ Se der duplo-clique direto, o macOS bloqueia com _"desenvolvedor não identificado"_ (Gatekeeper). O Ghost ainda não é assinado com Apple Developer ID — [veja abaixo](#-aviso-de-gatekeeper-desenvolvedor-não-identificado) se cair nesse aviso.
 3. No passo "Personalizar":
@@ -163,7 +163,7 @@ Tenta abrir o `.pkg` por duplo-clique → macOS bloqueia → abra **Ajustes do S
 **Opção 3 — Remover a flag de quarentena via Terminal** (por-app, permanente)
 
 ```bash
-sudo xattr -rd com.apple.quarantine ~/Downloads/Ghost-1.0.0.dmg
+sudo xattr -rd com.apple.quarantine ~/Downloads/Ghost.dmg
 # depois de instalar:
 sudo xattr -rd com.apple.quarantine /Applications/Ghost.app
 ```
