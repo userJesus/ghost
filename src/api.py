@@ -35,6 +35,21 @@ else:
     def force_foreground(*_args, **_kwargs): return False
     def hide_window(*_args, **_kwargs): return False
 
+
+_IS_MAC = sys.platform == "darwin"
+
+
+def _mac_screen_for_center() -> "dict | None":
+    """Return the NSScreen (as a Win32-style dict) containing the Ghost window's center,
+    or the primary screen if we can't detect. Returns None only if PyObjC is unavailable."""
+    if not _IS_MAC:
+        return None
+    try:
+        from . import mac_focus
+        return mac_focus.current_screen_for_window()
+    except Exception:
+        return None
+
 MAX_HISTORY = 10
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -975,8 +990,17 @@ class GhostAPI:
 
     def _current_monitor(self) -> dict | None:
         """Return the monitor dict containing the Ghost window's center.
-        Includes a 'work' tuple (left, top, right, bottom) that excludes the taskbar.
+        Includes a 'work' tuple (left, top, right, bottom) that excludes the taskbar/menu bar.
         """
+        if _IS_MAC:
+            s = _mac_screen_for_center()
+            if s is None:
+                return None
+            return {
+                "left": s["left"], "top": s["top"],
+                "width": s["width"], "height": s["height"],
+                "work": (s["work_left"], s["work_top"], s["work_right"], s["work_bottom"]),
+            }
         if not self._hwnd:
             return None
         try:
@@ -1286,8 +1310,23 @@ class GhostAPI:
             os._exit(1)
 
     def minimize_to_edge(self) -> dict:
-        """Shrink window to a 56×56 icon docked on the right edge of the current monitor."""
+        """Shrink window to a 56×56 icon docked on the right edge of the current screen/monitor."""
         try:
+            icon_size = 56
+
+            # ---------- macOS branch ----------
+            if _IS_MAC:
+                from . import mac_focus
+                cur = mac_focus.get_window_frame()
+                if cur is not None:
+                    self._saved_rect = cur  # (x, y, w, h) top-left coords
+                screen = _mac_screen_for_center() or {"left": 0, "top": 0, "width": 1920, "height": 1080}
+                edge_x = screen["left"] + screen["width"] - icon_size
+                edge_y = screen["top"] + (screen["height"] // 2) - (icon_size // 2)
+                mac_focus.set_window_frame(edge_x, edge_y, icon_size, icon_size)
+                return {"ok": True}
+
+            # ---------- Windows branch ----------
             import win32gui
             if not self._hwnd:
                 return {"error": "No HWND"}
@@ -1295,7 +1334,6 @@ class GhostAPI:
             x, y, r, b = rect
             self._saved_rect = (x, y, r - x, b - y)
 
-            icon_size = 56
             monitor = self._current_monitor()
             if monitor is None and self._monitors:
                 monitor = self._monitors[0]
@@ -1372,14 +1410,27 @@ class GhostAPI:
         """Shrink window to a composer-only bar at bottom-right. Responses appear
         in a separate floating popup at the top-right."""
         try:
+            bar_w = 820
+            bar_h = 200
+
+            # ---------- macOS branch ----------
+            if _IS_MAC:
+                from . import mac_focus
+                cur = mac_focus.get_window_frame()
+                if cur is not None:
+                    self._saved_rect = cur
+                s = _mac_screen_for_center() or {"work_left": 0, "work_top": 0, "work_right": 1920, "work_bottom": 1080}
+                x = s["work_right"] - bar_w - 12
+                y = s["work_bottom"] - bar_h - 12
+                mac_focus.set_window_frame(int(x), int(y), int(bar_w), int(bar_h))
+                return {"ok": True}
+
+            # ---------- Windows branch ----------
             import win32gui
             if not self._hwnd:
                 return {"error": "No HWND"}
             rect = win32gui.GetWindowRect(self._hwnd)
             self._saved_rect = (rect[0], rect[1], rect[2] - rect[0], rect[3] - rect[1])
-
-            bar_w = 820
-            bar_h = 200
             monitor = self._current_monitor()
             if monitor is None and self._monitors:
                 monitor = self._monitors[0]
@@ -1429,8 +1480,23 @@ class GhostAPI:
     def exit_compact_bar(self) -> dict:
         """Restore full-size window from compact bar mode. Also closes any response popup."""
         try:
-            import win32gui
             self.hide_response_popup()
+
+            # ---------- macOS branch ----------
+            if _IS_MAC:
+                from . import mac_focus
+                if self._saved_rect:
+                    x, y, w, h = self._saved_rect
+                else:
+                    s = _mac_screen_for_center() or {"left": 0, "top": 0, "width": 1920, "height": 1080}
+                    w, h = 580, 720
+                    x = s["left"] + (s["width"] - w) // 2
+                    y = s["top"] + (s["height"] - h) // 2
+                mac_focus.set_window_frame(int(x), int(y), int(w), int(h))
+                return {"ok": True}
+
+            # ---------- Windows branch ----------
+            import win32gui
             if not self._hwnd:
                 return {"error": "No HWND"}
             if self._saved_rect:
@@ -1462,7 +1528,23 @@ class GhostAPI:
 
             # Position at right of current monitor, taking 50% of its height.
             # Width matches the compact bar (820) para alinhar visualmente.
-            if self._response_hwnd:
+            if _IS_MAC:
+                # Mac: position the NSWindow titled "Ghost Response" via mac_focus.
+                try:
+                    from . import mac_focus
+                    s = _mac_screen_for_center() or {"left": 0, "top": 0, "width": 1920, "height": 1080}
+                    w = 820
+                    h = s["height"] // 2
+                    x = s["left"] + s["width"] - w - 12
+                    y = s["top"] + 48
+                    mac_focus.set_window_frame(int(x), int(y), int(w), int(h), match="Ghost Response")
+                    mac_focus.show_window()  # orderFront on Ghost windows (includes Response)
+                    if self._response_window is not None:
+                        try: self._response_window.show()
+                        except Exception: pass
+                except Exception as e:
+                    _log_error("popup_position_mac", e)
+            elif self._response_hwnd:
                 import win32gui
                 monitor = self._current_monitor() or (self._monitors[0] if self._monitors else None)
                 if monitor is None:
@@ -1529,6 +1611,13 @@ class GhostAPI:
         """Hide the response popup AND move it off-screen so its hidden rect
         doesn't render as a black rectangle under WDA_EXCLUDEFROMCAPTURE."""
         try:
+            if _IS_MAC:
+                try:
+                    if self._response_window is not None:
+                        self._response_window.hide()
+                except Exception:
+                    pass
+                return {"ok": True}
             if self._response_hwnd:
                 import win32con
                 import win32gui
@@ -1553,6 +1642,20 @@ class GhostAPI:
     def restore_from_edge(self) -> dict:
         """Restore window to its saved rect before docking."""
         try:
+            # ---------- macOS branch ----------
+            if _IS_MAC:
+                from . import mac_focus
+                if self._saved_rect:
+                    x, y, w, h = self._saved_rect
+                else:
+                    s = _mac_screen_for_center() or {"left": 0, "top": 0, "width": 1920, "height": 1080}
+                    w, h = 580, 720
+                    x = s["left"] + (s["width"] - w) // 2
+                    y = s["top"] + (s["height"] - h) // 2
+                mac_focus.set_window_frame(int(x), int(y), int(w), int(h))
+                return {"ok": True}
+
+            # ---------- Windows branch ----------
             import win32gui
             if not self._hwnd:
                 return {"error": "No HWND"}
@@ -1591,6 +1694,13 @@ class GhostAPI:
 
     def start_window_drag(self):
         try:
+            # ---------- macOS branch ----------
+            if _IS_MAC:
+                from . import mac_focus
+                ok = mac_focus.start_drag()
+                return {"ok": bool(ok)}
+
+            # ---------- Windows branch ----------
             if not self._hwnd:
                 # Try on-demand enumeration as a fallback
                 try:
