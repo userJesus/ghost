@@ -4,8 +4,13 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Ghost</title>
-    <link rel="stylesheet" href="style.css">
-    <link rel="stylesheet" href="pixel-ghost.css">
+    <!-- Cache-control: WKWebView on macOS can cache HTML/CSS between launches.
+         This meta + no-store pragma forces a fresh read on every open. -->
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <link rel="stylesheet" href="style.css?v=1.0.0">
+    <link rel="stylesheet" href="pixel-ghost.css?v=1.0.0">
     <script defer src="vendor/alpine.min.js"></script>
     <script src="vendor/marked.min.js"></script>
 </head>

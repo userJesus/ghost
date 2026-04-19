@@ -182,7 +182,79 @@ def _register_global_hotkey(hwnd: int):
     print("[init] Global hotkey registered: Ctrl+Shift+G", flush=True)
 
 
+_SINGLE_INSTANCE_MUTEX = None
+_SHOW_EVENT_NAME = "Global\\GhostShowEvent"
+_INSTANCE_MUTEX_NAME = "Global\\GhostSingleInstance"
+
+
+def _ensure_single_instance_windows() -> bool:
+    """Windows: use a named mutex to detect a running Ghost. If found, signal it
+    to show itself (via a named event the running instance listens on) and exit.
+    Returns True when this IS the sole instance; returns False (and exits on Win)
+    when another instance was already running.
+    """
+    if sys.platform != "win32":
+        return True
+    try:
+        import win32event
+        import win32api
+        import winerror
+        global _SINGLE_INSTANCE_MUTEX
+        _SINGLE_INSTANCE_MUTEX = win32event.CreateMutex(None, False, _INSTANCE_MUTEX_NAME)
+        if win32api.GetLastError() == winerror.ERROR_ALREADY_EXISTS:
+            # Signal the existing instance to show itself, then exit.
+            try:
+                ev = win32event.OpenEvent(
+                    win32event.EVENT_MODIFY_STATE, False, _SHOW_EVENT_NAME
+                )
+                win32event.SetEvent(ev)
+            except Exception:
+                pass
+            print("[main] another Ghost is already running — asked it to show and exiting",
+                  flush=True)
+            sys.exit(0)
+        return True
+    except Exception as e:
+        print(f"[main] single-instance check failed: {e}", flush=True)
+        return True
+
+
+def _watch_show_event_windows(hwnd_getter):
+    """Windows: listen on the named event and, when signaled, bring Ghost to front.
+    `hwnd_getter` is a zero-arg callable returning the current HWND (or 0)."""
+    if sys.platform != "win32":
+        return
+    try:
+        import win32event
+        ev = win32event.CreateEvent(None, False, False, _SHOW_EVENT_NAME)
+    except Exception as e:
+        print(f"[main] show-event create failed: {e}", flush=True)
+        return
+
+    def runner():
+        while True:
+            try:
+                win32event.WaitForSingleObject(ev, win32event.INFINITE)
+                hwnd = hwnd_getter()
+                if hwnd:
+                    try:
+                        show_window(hwnd)
+                    except Exception as e:
+                        print(f"[show-event] show_window failed: {e}", flush=True)
+            except Exception as e:
+                print(f"[show-event] wait error: {e}", flush=True)
+                time.sleep(1)
+
+    t = threading.Thread(target=runner, daemon=True, name="ghost-show-event")
+    t.start()
+
+
 def main():
+    # Single-instance guard — exits if another Ghost is already running and
+    # signals it to show itself. Mac: NSApplication handles double-launch by
+    # default (brings existing instance to front).
+    _ensure_single_instance_windows()
+
     # Redirect stderr to a log file so crashes are captured even under pythonw.
     try:
         sys.stderr = open(LOG_FILE, "w", encoding="utf-8", buffering=1)
@@ -191,6 +263,8 @@ def main():
         pass
 
     api = GhostAPI()
+    if sys.platform == "win32":
+        _watch_show_event_windows(lambda: api._hwnd)
 
     # Placeholder values; real centering is done via Win32 after the window exists
     init_w, init_h = 580, 720
