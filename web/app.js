@@ -223,6 +223,25 @@ function ghostApp() {
                 } catch (_) { /* offline or bridge hiccup */ }
                 this._scheduleUpdateCheck();
 
+                // Compact-mode chip-overlay resize: grow the window vertically when
+                // any dropdown opens so the flyout can render without being clipped.
+                this.$watch(
+                    () => this.presetOpen || this.captureModeOpen || this.monitorOpen,
+                    (anyOpen) => {
+                        if (!this.compactMode) return;
+                        try { window.pywebview.api.chip_overlay_resize(!!anyOpen); }
+                        catch (_) {}
+                    },
+                );
+                // When leaving compact mode while a chip is open, reset the window size.
+                this.$watch('compactMode', (nowCompact) => {
+                    if (!nowCompact) {
+                        this.presetOpen = false;
+                        this.captureModeOpen = false;
+                        this.monitorOpen = false;
+                    }
+                });
+
                 try {
                     this.presets = await window.pywebview.api.get_presets();
                     this.monitors = await window.pywebview.api.get_monitors();

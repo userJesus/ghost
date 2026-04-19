@@ -1309,6 +1309,51 @@ class GhostAPI:
             import os
             os._exit(1)
 
+    def chip_overlay_resize(self, expanded: bool = False) -> dict:
+        """Called from the webview when a dropdown (chip flyout) opens or closes
+        in compact mode. Temporarily grows the window vertically so the flyout
+        has room to render as a true overlay without being clipped by the window
+        edge. On close, shrinks back to the normal compact bar height."""
+        try:
+            COMPACT_H_NORMAL = 200
+            COMPACT_H_EXPANDED = 520
+            bar_w = 820
+            target_h = COMPACT_H_EXPANDED if expanded else COMPACT_H_NORMAL
+
+            # ---------- macOS branch ----------
+            if _IS_MAC:
+                from . import mac_focus
+                s = _mac_screen_for_center() or {"work_right": 1920, "work_bottom": 1080}
+                x = s["work_right"] - bar_w - 12
+                y = s["work_bottom"] - target_h - 12
+                mac_focus.set_window_frame(int(x), int(y), int(bar_w), int(target_h))
+                return {"ok": True}
+
+            # ---------- Windows branch ----------
+            import win32gui
+            if not self._hwnd:
+                return {"error": "No HWND"}
+            monitor = self._current_monitor() or (self._monitors[0] if self._monitors else None)
+            if monitor is None:
+                monitor = {"left": 0, "top": 0, "width": 1920, "height": 1080}
+            work = monitor.get("work")
+            if work:
+                _, _, wr, wb = work
+            else:
+                wr = monitor["left"] + monitor["width"]
+                wb = monitor["top"] + monitor["height"]
+            x = wr - bar_w - 12
+            y = wb - target_h - 12
+            SWP_NOZORDER_LOCAL = 0x0004
+            SWP_NOACTIVATE_LOCAL = 0x0010
+            win32gui.SetWindowPos(
+                self._hwnd, 0, x, y, bar_w, target_h,
+                SWP_NOZORDER_LOCAL | SWP_NOACTIVATE_LOCAL
+            )
+            return {"ok": True}
+        except Exception as e:
+            return {"error": _log_error("chip_overlay_resize", e)}
+
     def minimize_to_edge(self) -> dict:
         """Shrink window to a 56×56 icon docked on the right edge of the current screen/monitor."""
         try:
