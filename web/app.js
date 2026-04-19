@@ -234,6 +234,19 @@ function ghostApp() {
                     }
                 });
 
+                // The floating dropdown popup (compact-mode only) routes the
+                // selection back to us through this global. Updates the same
+                // state the in-page flyout would have set.
+                window.applyDropdownResult = (kind, value) => {
+                    if (kind === 'preset') {
+                        this.selectedPreset = value;
+                    } else if (kind === 'captureMode') {
+                        this.captureMode = value;
+                    } else if (kind === 'monitor') {
+                        this.selectedMonitor = value;
+                    }
+                };
+
 
                 try {
                     this.presets = await window.pywebview.api.get_presets();
@@ -945,6 +958,68 @@ function ghostApp() {
             if (!url) return;
             try { window.pywebview.api.open_url ? window.pywebview.api.open_url(url) : window.open(url, '_blank'); }
             catch (_) { window.open(url, '_blank'); }
+        },
+
+        // =================================================================
+        // Chip dropdowns
+        //   Normal app mode → in-page .chip-flyout (simple toggle)
+        //   Compact mode    → floating popup window positioned at chip
+        //                     (in-page flyout can't escape the 200px bar)
+        // =================================================================
+        async _openCompactDropdown(kind, items, selected, chipEl) {
+            try {
+                const mainRect = await window.pywebview.api.get_main_window_rect();
+                if (!mainRect || mainRect.error) return;
+                const r = chipEl.getBoundingClientRect();
+                // Popup opens UPWARD above the chip (same direction as the
+                // default in-page flyout). Height = 300 or fits items exactly.
+                const width = 240;
+                const itemRow = 38;
+                const height = Math.min(320, 48 + items.length * itemRow);
+                const screenX = Math.round(mainRect.x + r.left);
+                const screenY = Math.round(mainRect.y + r.top - height - 6);
+                await window.pywebview.api.show_dropdown_popup(
+                    kind, items, selected, screenX, screenY, width, height,
+                );
+            } catch (e) { console.warn('compact dropdown failed:', e); }
+        },
+
+        openPresetChip($event) {
+            if (this.compactMode) {
+                this.presetOpen = false; this.captureModeOpen = false; this.monitorOpen = false;
+                const items = (this.presets || []).map(p => ({ value: p, label: p }));
+                this._openCompactDropdown('preset', items, this.selectedPreset, $event.currentTarget);
+            } else {
+                this.captureModeOpen = false; this.monitorOpen = false;
+                this.presetOpen = !this.presetOpen;
+            }
+        },
+
+        openCaptureModeChip($event) {
+            if (this.compactMode) {
+                this.presetOpen = false; this.captureModeOpen = false; this.monitorOpen = false;
+                const items = (this.captureModes || []).map(m => ({
+                    value: m.value, label: m.label, icon: m.icon,
+                }));
+                this._openCompactDropdown('captureMode', items, this.captureMode, $event.currentTarget);
+            } else {
+                this.presetOpen = false; this.monitorOpen = false;
+                this.captureModeOpen = !this.captureModeOpen;
+            }
+        },
+
+        openMonitorChip($event) {
+            if (this.compactMode) {
+                this.presetOpen = false; this.captureModeOpen = false; this.monitorOpen = false;
+                const items = (this.monitors || []).map(m => ({
+                    value: m.index,
+                    label: (m.label || ('Monitor ' + m.index)) + ' (' + m.width + '×' + m.height + ')',
+                }));
+                this._openCompactDropdown('monitor', items, this.selectedMonitor, $event.currentTarget);
+            } else {
+                this.presetOpen = false; this.captureModeOpen = false;
+                this.monitorOpen = !this.monitorOpen;
+            }
         },
 
         async installUpdate() {

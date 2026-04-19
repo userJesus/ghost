@@ -134,6 +134,100 @@ class GhostAPI:
         except Exception as e:
             return {"error": _log_error("get_app_info", e)}
 
+    # =====================================================================
+    # Floating dropdown popup — third pywebview window that renders chip
+    # options in compact mode outside the 200px bar's bounds (so the full
+    # 7-option list overlays the app the way a native menu does).
+    # =====================================================================
+    def set_dropdown_window(self, window) -> None:
+        self._dropdown_window = window
+
+    def set_dropdown_hwnd(self, hwnd: int) -> None:
+        self._dropdown_hwnd = int(hwnd)
+
+    def get_main_window_rect(self) -> dict:
+        """Main Ghost window's screen rect — used by JS to translate a chip's
+        viewport position to absolute screen coords for popup placement."""
+        try:
+            import win32gui
+            if not self._hwnd:
+                return {"error": "no hwnd"}
+            l, t, r, b = win32gui.GetWindowRect(self._hwnd)
+            return {"x": l, "y": t, "width": r - l, "height": b - t}
+        except Exception as e:
+            return {"error": _log_error("get_main_window_rect", e)}
+
+    def show_dropdown_popup(
+        self, kind: str, items: list, selected, screen_x: int, screen_y: int,
+        width: int = 240, height: int = 300,
+    ) -> dict:
+        """Position + show the floating dropdown popup at (screen_x, screen_y)."""
+        try:
+            if self._dropdown_window is None:
+                return {"error": "dropdown window not pre-created"}
+            payload = json.dumps({"kind": kind, "items": items, "selected": selected})
+            try:
+                self._dropdown_window.evaluate_js(f"window.setDropdown({payload})")
+            except Exception:
+                pass
+            import win32gui
+            if self._dropdown_hwnd:
+                SWP_NOZORDER_LOCAL = 0x0004
+                SWP_NOACTIVATE_LOCAL = 0x0010
+                win32gui.SetWindowPos(
+                    self._dropdown_hwnd, 0,
+                    int(screen_x), int(screen_y), int(width), int(height),
+                    SWP_NOZORDER_LOCAL | SWP_NOACTIVATE_LOCAL,
+                )
+                import win32con
+                win32gui.ShowWindow(self._dropdown_hwnd, win32con.SW_SHOW)
+            else:
+                try:
+                    self._dropdown_window.show()
+                except Exception:
+                    pass
+            return {"ok": True}
+        except Exception as e:
+            return {"error": _log_error("show_dropdown_popup", e)}
+
+    def hide_dropdown_popup(self) -> dict:
+        """Hide + park off-screen so its hidden rect doesn't show as black."""
+        try:
+            if self._dropdown_hwnd:
+                import win32con
+                import win32gui
+                win32gui.ShowWindow(self._dropdown_hwnd, win32con.SW_HIDE)
+                SWP_NOSIZE_LOCAL = 0x0001
+                SWP_NOZORDER_LOCAL = 0x0004
+                SWP_NOACTIVATE_LOCAL = 0x0010
+                win32gui.SetWindowPos(
+                    self._dropdown_hwnd, 0, -10000, -10000, 0, 0,
+                    SWP_NOSIZE_LOCAL | SWP_NOZORDER_LOCAL | SWP_NOACTIVATE_LOCAL,
+                )
+            elif self._dropdown_window is not None:
+                try:
+                    self._dropdown_window.hide()
+                except Exception:
+                    pass
+            return {"ok": True}
+        except Exception as e:
+            return {"error": _log_error("hide_dropdown_popup", e)}
+
+    def dropdown_pick(self, kind: str, value) -> dict:
+        """Called by the popup window when the user picks an option. Routes
+        the selection to the main window via evaluate_js, then hides."""
+        try:
+            if self._window is not None:
+                code = f"window.applyDropdownResult({json.dumps(kind)}, {json.dumps(value)})"
+                try:
+                    self._window.evaluate_js(code)
+                except Exception:
+                    pass
+            self.hide_dropdown_popup()
+            return {"ok": True}
+        except Exception as e:
+            return {"error": _log_error("dropdown_pick", e)}
+
     def download_and_install_update(self) -> dict:
         """Fetches the latest installer from GitHub Releases and launches it.
 

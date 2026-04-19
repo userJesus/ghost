@@ -1335,11 +1335,11 @@ input, textarea, button, select {
    lado do rodapé da barra). Flyout abre PARA CIMA do chip (default:
    bottom: calc(100% + 6px)) — cabe inteiro no espaço acima porque os
    chips ficam no final da barra. max-height clampa à viewport. */
-.app.compact > .composer {
-    /* Chips go to the BOTTOM of the compact bar (next to the input).
-       The default upward-opening flyout has room above to render fully. */
-    flex-direction: column-reverse;
-}
+/* Compact-mode composer keeps its natural chips→input order now that the
+   dropdown is a separate popup window (see src/api.py::show_dropdown_popup
+   and web/dropdown.html). The popup escapes the 200px compact bar, so we
+   no longer need to reorder the composer to make room for an in-page
+   flyout. */
 .chip-flyout-label {
     font-size: 10.5px;
     font-weight: 600;
