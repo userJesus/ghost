@@ -84,34 +84,24 @@ ENT
 
 # ---------------------------------------------------------------
 # 4. pkgbuild — wrap the app in a component pkg
+#
+# Using `--component <path-to-.app>` is the simplest + most reliable form:
+# pkgbuild figures out the bundle identifier, payload path, and install
+# rules automatically. The previous `--root + --component-plist` combo
+# produced a pkg whose payload couldn't be found at install time
+# ("Software que deve ser instalado não foi encontrado").
 # ---------------------------------------------------------------
 echo "[mac-build] 4/7  wrapping Ghost.app into component pkg..."
-# pkgbuild needs a staging directory containing ONLY the .app
-STAGE="${BUILD}/app-stage"
-rm -rf "${STAGE}"
-mkdir -p "${STAGE}"
-cp -R "${APP_BUNDLE}" "${STAGE}/"
-
 pkgbuild \
-    --root "${STAGE}" \
+    --component "${APP_BUNDLE}" \
     --identifier "io.github.userjesus.ghost" \
     --version "${VERSION}" \
     --install-location "/Applications" \
-    --component-plist /dev/stdin \
-    "${BUILD}/Ghost.pkg" <<'PLIST'
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<array>
-  <dict>
-    <key>BundleIsRelocatable</key><false/>
-    <key>BundleIsVersionChecked</key><true/>
-    <key>BundleOverwriteAction</key><string>upgrade</string>
-    <key>RootRelativeBundlePath</key><string>Ghost.app</string>
-  </dict>
-</array>
-</plist>
-PLIST
+    "${BUILD}/Ghost.pkg"
+
+# Sanity-check: inspect the generated pkg and confirm payload is present.
+pkgutil --payload-files "${BUILD}/Ghost.pkg" | head -5 || true
+echo "[mac-build]     Ghost.pkg size: $(du -h "${BUILD}/Ghost.pkg" | cut -f1)"
 
 # ---------------------------------------------------------------
 # 5. Fetch BlackHole 2ch driver pkg
