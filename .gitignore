@@ -17,6 +17,7 @@ build/
 dist/
 *.spec
 !ghost.spec
+!ghost_mac.spec
 installer/windows/Output/
 installer/macos/Output/
 installer/macos/build/
