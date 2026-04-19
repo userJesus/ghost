@@ -52,7 +52,7 @@
         <pkg-ref id="audio.existential.BlackHole2ch"/>
     </choice>
 
-    <!-- Component package references. These files must exist in --package-path. -->
+    <!-- Component package references (resolved via productbuild package-path). -->
     <pkg-ref id="io.github.userjesus.ghost"
              version="1.0.0"
              auth="Root"
