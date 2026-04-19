@@ -168,12 +168,32 @@ cp "${ROOT}/README.md"       "${STAGING}/README.md"
 cp "${ROOT}/LICENSE"         "${STAGING}/LICENSE.txt"
 chmod +x "${STAGING}/uninstall_mac.sh"
 
+# hdiutil is flaky on GitHub Actions macOS runners — sometimes a previous
+# volume mount is still held ("Resource busy"). Pre-unmount + retry with
+# exponential backoff handles both cases.
 rm -f "${DMG_OUT}"
-hdiutil create \
-    -volname "Ghost ${VERSION}" \
-    -srcfolder "${STAGING}" \
-    -ov -format UDZO \
-    "${DMG_OUT}"
+hdiutil detach "/Volumes/Ghost ${VERSION}" -force 2>/dev/null || true
+hdiutil detach "/Volumes/Ghost" -force 2>/dev/null || true
+
+attempt=0
+max_attempts=4
+until hdiutil create \
+        -volname "Ghost ${VERSION}" \
+        -srcfolder "${STAGING}" \
+        -ov -format UDZO \
+        "${DMG_OUT}"; do
+    attempt=$((attempt + 1))
+    if [ "$attempt" -ge "$max_attempts" ]; then
+        echo "[mac-build] hdiutil create failed after ${max_attempts} attempts"
+        exit 1
+    fi
+    wait_s=$((attempt * 5))
+    echo "[mac-build] hdiutil create failed (attempt $attempt/$max_attempts) — waiting ${wait_s}s..."
+    # Detach again and wait.
+    hdiutil detach "/Volumes/Ghost ${VERSION}" -force 2>/dev/null || true
+    rm -f "${DMG_OUT}"
+    sleep "$wait_s"
+done
 
 echo "[mac-build] dmg: ${DMG_OUT} ($(du -h "${DMG_OUT}" | cut -f1))"
 echo "[mac-build] done."

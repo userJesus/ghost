@@ -123,15 +123,20 @@ jobs:
           path: dist
 
       - name: Create version-less aliases (stable /releases/latest/download URLs)
-        # Copies each versioned installer to a generic name so the download links in the
-        # README never break between releases: /releases/latest/download/GhostSetup.exe
-        # always resolves, regardless of the semver tag.
+        # Copies each versioned installer to a generic name so download links in the
+        # README never break between releases. Uses `shopt -s nullglob` so a missing
+        # pattern (e.g. no Mac artifact when build-macos failed) doesn't abort the
+        # step under `set -e`.
+        shell: bash
         run: |
+          set +e
           cd dist
           ls -la
-          for f in GhostSetup-*.exe;       do [ -f "$f" ] && cp "$f" GhostSetup.exe;       done
-          for f in Ghost-*.dmg;            do [ -f "$f" ] && cp "$f" Ghost.dmg;            done
-          for f in GhostInstaller-*.pkg;   do [ -f "$f" ] && cp "$f" GhostInstaller.pkg;   done
+          shopt -s nullglob
+          for f in GhostSetup-*.exe;       do cp "$f" GhostSetup.exe;       done
+          for f in Ghost-*.dmg;            do cp "$f" Ghost.dmg;            done
+          for f in GhostInstaller-*.pkg;   do cp "$f" GhostInstaller.pkg;   done
+          exit 0
 
       - name: Generate SHA256 checksums
         run: |
