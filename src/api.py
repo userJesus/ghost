@@ -296,23 +296,51 @@ class GhostAPI:
                 pass
 
             # ---------- launch installer + self-exit ----------
+            #
+            # Why so ceremonial: in silent mode the installer races the running
+            # Ghost for file handles. On the last run the user's libsndfile_x64.dll
+            # was LOCKED by our msedgewebview2.exe children, so Inno Setup
+            # scheduled the replace-on-reboot. The next Ghost.exe launched with
+            # a mismatched mix of old + new DLLs and crashed with
+            # 'cannot load library libsndfile.dll: error 0x7e'.
+            #
+            # Fix: spawn a DETACHED cmd that sleeps 3s, then runs the installer —
+            # by then our process tree (this python + all webview2 children) is
+            # fully gone because we taskkill /T /PID self immediately after.
             if sys.platform == "win32":
-                # Inno Setup: /SILENT installs with a progress window but no prompts,
-                # /CLOSEAPPLICATIONS lets it close Ghost.exe if still running,
-                # /RESTARTAPPLICATIONS re-launches Ghost after install.
-                subprocess.Popen(
-                    [str(target), "/SILENT", "/CLOSEAPPLICATIONS", "/RESTARTAPPLICATIONS"],
-                    creationflags=0x00000008 | 0x00000200,  # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
+                pid = os.getpid()
+                DETACHED_PROCESS = 0x00000008
+                CREATE_NEW_PROCESS_GROUP = 0x00000200
+                CREATE_NO_WINDOW = 0x08000000
+                installer_cmd = (
+                    f'timeout /t 3 /nobreak >nul && '
+                    f'"{target}" /SILENT /CLOSEAPPLICATIONS /FORCECLOSEAPPLICATIONS '
+                    f'/RESTARTAPPLICATIONS'
                 )
+                subprocess.Popen(
+                    ["cmd", "/c", installer_cmd],
+                    creationflags=DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW,
+                    close_fds=True,
+                )
+                # Force-kill our whole process tree NOW so the installer (which
+                # starts in 3s) finds no locked files. This kills:
+                #   - this python.exe (pid)
+                #   - all msedgewebview2.exe children (/T = tree)
+                try:
+                    subprocess.run(
+                        ["taskkill", "/F", "/T", "/PID", str(pid)],
+                        capture_output=True, timeout=3,
+                    )
+                except Exception:
+                    pass
+                os._exit(0)
             else:
                 # macOS: `open` sends the pkg to Installer.app.
                 subprocess.Popen(["open", str(target)])
-
-            # Exit current Ghost after a short delay so the installer can take over.
-            def _exit_soon():
-                time.sleep(1.5)
-                os._exit(0)
-            threading.Thread(target=_exit_soon, daemon=True).start()
+                def _exit_soon():
+                    time.sleep(1.5)
+                    os._exit(0)
+                threading.Thread(target=_exit_soon, daemon=True).start()
             return {"ok": True, "target": str(target)}
         except Exception as e:
             return {"error": _log_error("download_and_install_update", e)}
