@@ -81,7 +81,11 @@ Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExeName}"; Tasks: deskto
 Name: "{userstartup}\{#AppName}"; Filename: "{app}\{#AppExeName}"; Tasks: startupicon
 
 [Run]
+; Normal install: the "Launch Ghost" checkbox appears on the Finished page.
 Filename: "{app}\{#AppExeName}"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall skipifsilent
+; Silent install (used by the in-app auto-updater): always relaunch Ghost so
+; the user isn't left staring at a closed app after an update.
+Filename: "{app}\{#AppExeName}"; Flags: nowait runasoriginaluser; Check: WizardSilent
 
 ; ------------------------------------------------------------
 ;  Uninstall: ask whether to purge user data (logs, config, cache).
