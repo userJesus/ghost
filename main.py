@@ -225,32 +225,54 @@ _INSTANCE_MUTEX_NAME = "Global\\GhostSingleInstance"
 
 
 def _ensure_single_instance_windows() -> bool:
-    """Windows: use a named mutex to detect a running Ghost. If found, signal it
-    to show itself (via a named event the running instance listens on) and exit.
-    Returns True when this IS the sole instance; returns False (and exits on Win)
-    when another instance was already running.
+    """Windows: use a named mutex to detect a running Ghost.
+
+    If another instance is detected, signal the named event so the running
+    Ghost shows itself, then exit. Otherwise acquire the mutex and proceed.
+
+    Retry logic: if the mutex appears held, we wait up to ~1.5s for it to be
+    released. The previous Ghost may have JUST called `close_app` (taskkill /T
+    is near-instant but Windows takes ~300-800ms to fully reclaim named-mutex
+    handles after the owner dies). Without this retry, a rapid close → reopen
+    hits the short window where the mutex still exists from the dying instance,
+    signals a non-existent listener, and exits — so the user sees "nothing
+    happened" and has to click again.
     """
     if sys.platform != "win32":
         return True
     try:
-        import win32event
         import win32api
+        import win32event
         import winerror
         global _SINGLE_INSTANCE_MUTEX
-        _SINGLE_INSTANCE_MUTEX = win32event.CreateMutex(None, False, _INSTANCE_MUTEX_NAME)
-        if win32api.GetLastError() == winerror.ERROR_ALREADY_EXISTS:
-            # Signal the existing instance to show itself, then exit.
+
+        for attempt in range(8):  # 8 × 200ms = 1.6s max wait
+            _SINGLE_INSTANCE_MUTEX = win32event.CreateMutex(
+                None, False, _INSTANCE_MUTEX_NAME
+            )
+            if win32api.GetLastError() != winerror.ERROR_ALREADY_EXISTS:
+                return True  # We got it — we're the sole instance
+            # Close our handle before retrying (otherwise we'd leak)
             try:
-                ev = win32event.OpenEvent(
-                    win32event.EVENT_MODIFY_STATE, False, _SHOW_EVENT_NAME
-                )
-                win32event.SetEvent(ev)
+                win32api.CloseHandle(_SINGLE_INSTANCE_MUTEX)
             except Exception:
                 pass
-            print("[main] another Ghost is already running — asked it to show and exiting",
-                  flush=True)
-            sys.exit(0)
-        return True
+            _SINGLE_INSTANCE_MUTEX = None
+            if attempt < 7:
+                time.sleep(0.2)
+
+        # After ~1.6s the mutex is still held → there really is a live Ghost.
+        # Signal it to show itself and exit.
+        try:
+            ev = win32event.OpenEvent(
+                win32event.EVENT_MODIFY_STATE, False, _SHOW_EVENT_NAME
+            )
+            win32event.SetEvent(ev)
+        except Exception:
+            pass
+        print("[main] another Ghost is already running — asked it to show and exiting",
+              flush=True)
+        sys.exit(0)
     except Exception as e:
         print(f"[main] single-instance check failed: {e}", flush=True)
         return True

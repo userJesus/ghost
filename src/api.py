@@ -309,32 +309,61 @@ class GhostAPI:
             # ---------- launch installer + self-exit ----------
             #
             # Why so ceremonial: in silent mode the installer races the running
-            # Ghost for file handles. On the last run the user's libsndfile_x64.dll
-            # was LOCKED by our msedgewebview2.exe children, so Inno Setup
-            # scheduled the replace-on-reboot. The next Ghost.exe launched with
-            # a mismatched mix of old + new DLLs and crashed with
-            # 'cannot load library libsndfile.dll: error 0x7e'.
+            # Ghost for file handles. libsndfile_x64.dll stays LOCKED by our
+            # msedgewebview2.exe children until they die, and Inno Setup would
+            # otherwise schedule replace-on-reboot, leaving Ghost with a mismatched
+            # mix of old + new DLLs ('cannot load library libsndfile.dll: 0x7e').
             #
-            # Fix: spawn a DETACHED cmd that sleeps 3s, then runs the installer —
-            # by then our process tree (this python + all webview2 children) is
-            # fully gone because we taskkill /T /PID self immediately after.
+            # Strategy: spawn a HIDDEN PowerShell that sleeps 3s then launches the
+            # installer. We previously used `cmd /c timeout /t 3 && installer`,
+            # but `timeout` requires a console — under DETACHED_PROCESS there's no
+            # console, so timeout fails silently, the `&&` short-circuits, and the
+            # installer never runs. PowerShell's Start-Sleep works without a
+            # console, and -WindowStyle Hidden reliably hides the PS window.
+            #
+            # Right after spawning, we taskkill /T our whole tree so by the time
+            # PowerShell wakes up (3s later) and starts the installer, every file
+            # handle we held is released.
             if sys.platform == "win32":
+                if not target.exists() or target.stat().st_size < 1024:
+                    return {"error": f"installer download failed or truncated: {target}"}
+
                 pid = os.getpid()
                 DETACHED_PROCESS = 0x00000008
                 CREATE_NEW_PROCESS_GROUP = 0x00000200
                 CREATE_NO_WINDOW = 0x08000000
-                installer_cmd = (
-                    f'timeout /t 3 /nobreak >nul && '
-                    f'"{target}" /SILENT /CLOSEAPPLICATIONS /FORCECLOSEAPPLICATIONS '
-                    f'/RESTARTAPPLICATIONS'
+                # PowerShell command: sleep then Start-Process the installer
+                # with the silent-upgrade flags. Start-Process -WindowStyle
+                # Hidden launches the installer without briefly flashing a
+                # window (Inno Setup respects /SILENT but sometimes still
+                # creates a hidden progress window during extraction).
+                ps_script = (
+                    "Start-Sleep -Seconds 3; "
+                    f"Start-Process -FilePath '{target}' "
+                    "-ArgumentList '/SILENT','/CLOSEAPPLICATIONS',"
+                    "'/FORCECLOSEAPPLICATIONS','/RESTARTAPPLICATIONS' "
+                    "-WindowStyle Hidden"
                 )
-                subprocess.Popen(
-                    ["cmd", "/c", installer_cmd],
-                    creationflags=DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW,
-                    close_fds=True,
-                )
+                try:
+                    subprocess.Popen(
+                        ["powershell.exe", "-NoProfile", "-WindowStyle", "Hidden",
+                         "-ExecutionPolicy", "Bypass", "-Command", ps_script],
+                        creationflags=DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW,
+                        close_fds=True,
+                    )
+                except FileNotFoundError:
+                    # PowerShell missing (extremely rare on Win10+). Fallback:
+                    # spawn the installer directly without the 3s wait. Some DLLs
+                    # may get replaced on reboot, but at least the update runs.
+                    subprocess.Popen(
+                        [str(target), "/SILENT", "/CLOSEAPPLICATIONS",
+                         "/FORCECLOSEAPPLICATIONS", "/RESTARTAPPLICATIONS"],
+                        creationflags=DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW,
+                        close_fds=True,
+                    )
+
                 # Force-kill our whole process tree NOW so the installer (which
-                # starts in 3s) finds no locked files. This kills:
+                # starts in 3s) finds no locked files:
                 #   - this python.exe (pid)
                 #   - all msedgewebview2.exe children (/T = tree)
                 try:
@@ -1539,7 +1568,9 @@ class GhostAPI:
 
     def close_app(self) -> dict:
         """Encerra o app completamente: destrói todas as janelas +
-        força saída do processo (garante que msedgewebview2.exe também morra)."""
+        force-kill da árvore de processos (garante que msedgewebview2.exe
+        filhos não fiquem zumbis segurando a pasta UserData do WebView2 —
+        se ficarem, a próxima instância crasha no init do WebView)."""
         try:
             # 1. Destrói janelas pywebview (main + response popup)
             import webview
@@ -1547,15 +1578,30 @@ class GhostAPI:
                 try: w.destroy()
                 except Exception: pass
 
-            # 2. Hard-kill processo principal — isso mata threads de áudio,
-            # watch loop, hotkey listener, e o OS encerra child processes
-            # (WebView2 helper, etc). Usa Timer pra dar 200ms pro webview
-            # fechar graciosamente antes.
-            def _kill():
-                import os
-                os._exit(0)
+            # 2. Hard-kill de TODA a árvore de processos (taskkill /T), não só
+            # nós mesmos. os._exit() sozinho só mata o Python — os processos
+            # filhos msedgewebview2.exe (do WebView2) seguem vivos por 1-2s,
+            # e durante esse tempo eles mantêm lock na pasta UserData/ do
+            # WebView2. Se o usuário reabrir rápido, o novo Ghost falha ao
+            # inicializar o WebView2 (pasta bloqueada) e crasha.
+            import os
+            import subprocess
             import threading
-            threading.Timer(0.2, _kill).start()
+            pid = os.getpid()
+
+            def _nuke():
+                try:
+                    subprocess.run(
+                        ["taskkill", "/F", "/T", "/PID", str(pid)],
+                        capture_output=True, timeout=3,
+                        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                    )
+                except Exception:
+                    pass
+                # Se taskkill falhou por algum motivo, força saída mesmo assim
+                os._exit(0)
+
+            threading.Timer(0.2, _nuke).start()
             return {"ok": True}
         except Exception as e:
             _log_error("close_app", e)
