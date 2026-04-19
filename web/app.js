@@ -245,6 +245,7 @@ function ghostApp() {
                     } else if (kind === 'monitor') {
                         this.selectedMonitor = value;
                     }
+                    this._dropdownOpen = false;
                 };
 
 
@@ -981,6 +982,23 @@ function ghostApp() {
                 await window.pywebview.api.show_dropdown_popup(
                     kind, items, selected, screenX, screenY, width, height,
                 );
+                this._dropdownOpen = true;
+                // Backup click-outside handler: the popup's own 'blur' event
+                // covers clicks on other apps, but a click inside the main
+                // Ghost window won't necessarily steal focus from the popup
+                // on Windows. Listen for the next mousedown on the main and
+                // close the popup manually.
+                if (!this._dropdownClickAwayHandler) {
+                    this._dropdownClickAwayHandler = (ev) => {
+                        // Ignore clicks on the chip triggers (which re-open
+                        // the popup themselves).
+                        if (ev.target && ev.target.closest && ev.target.closest('.chip-trigger')) return;
+                        if (!this._dropdownOpen) return;
+                        this._dropdownOpen = false;
+                        try { window.pywebview.api.hide_dropdown_popup(); } catch (_) {}
+                    };
+                    document.addEventListener('mousedown', this._dropdownClickAwayHandler, true);
+                }
             } catch (e) { console.warn('compact dropdown failed:', e); }
         },
 

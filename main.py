@@ -141,19 +141,27 @@ def _apply_response_popup_tweaks(api: GhostAPI):
             return True
 
         win32gui.EnumWindows(cb, None)
-        for label, hwnd, setter in (
-            ("response", response_hwnd, api.set_response_hwnd),
-            ("dropdown", dropdown_hwnd, api.set_dropdown_hwnd),
-        ):
-            if not hwnd:
-                continue
+        # Response popup gets the full treatment (capture-excluded + no-taskbar).
+        if response_hwnd:
             try:
-                setter(hwnd)
-                hide_from_capture(hwnd, True)
-                hide_from_taskbar(hwnd)
-                print(f"[init] {label} HWND={hwnd}", flush=True)
+                api.set_response_hwnd(response_hwnd)
+                hide_from_capture(response_hwnd, True)
+                hide_from_taskbar(response_hwnd)
+                print(f"[init] response HWND={response_hwnd}", flush=True)
             except Exception as e:
-                print(f"[warn] {label} popup protect: {e}", flush=True)
+                print(f"[warn] response popup protect: {e}", flush=True)
+
+        # Dropdown popup: capture-excluded BUT must retain the ability to gain
+        # focus so its JS `blur` handler can auto-close on click-outside.
+        # hide_from_taskbar sets WS_EX_TOOLWINDOW which suppresses activation,
+        # so we skip it here.
+        if dropdown_hwnd:
+            try:
+                api.set_dropdown_hwnd(dropdown_hwnd)
+                hide_from_capture(dropdown_hwnd, True)
+                print(f"[init] dropdown HWND={dropdown_hwnd}", flush=True)
+            except Exception as e:
+                print(f"[warn] dropdown popup protect: {e}", flush=True)
     except Exception as e:
         print(f"[warn] popup tweak error: {e}", flush=True)
 

@@ -172,6 +172,9 @@ class GhostAPI:
                 pass
             import win32gui
             if self._dropdown_hwnd:
+                # Position first (without activating), then bring to front AND
+                # activate so the popup can gain focus — needed so the JS
+                # 'blur' handler inside dropdown.html fires on click-outside.
                 SWP_NOZORDER_LOCAL = 0x0004
                 SWP_NOACTIVATE_LOCAL = 0x0010
                 win32gui.SetWindowPos(
@@ -180,7 +183,11 @@ class GhostAPI:
                     SWP_NOZORDER_LOCAL | SWP_NOACTIVATE_LOCAL,
                 )
                 import win32con
-                win32gui.ShowWindow(self._dropdown_hwnd, win32con.SW_SHOW)
+                win32gui.ShowWindow(self._dropdown_hwnd, win32con.SW_SHOWNORMAL)
+                try:
+                    win32gui.SetForegroundWindow(self._dropdown_hwnd)
+                except Exception:
+                    pass
             else:
                 try:
                     self._dropdown_window.show()
