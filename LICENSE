@@ -1,21 +1,183 @@
-MIT License
+Ghost — Non-Commercial Source-Available License (NCSAL) v1.0
+================================================================
 
-Copyright (c) 2026 Jesus Oliveira
+Copyright © 2026 Jesus Oliveira <contato.jesusoliveira@gmail.com>
+  LinkedIn: https://www.linkedin.com/in/ojesus
+  GitHub:   https://github.com/userJesus
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+This software ("Ghost", "the Software") is made available to the public as
+source-available under the following terms. By downloading, using, copying,
+modifying, compiling, or distributing the Software, you agree to be bound by
+this License. If you do not agree, you must not use the Software.
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
 
+1. GRANT OF RIGHTS
+-------------------
+Subject to the restrictions in Section 2, the Author grants you a worldwide,
+royalty-free, non-exclusive, non-transferable license to:
+
+  (a) Use the Software for personal, educational, academic, and non-commercial
+      research purposes.
+  (b) Read, inspect, and study the source code.
+  (c) Modify the source code for the uses permitted in (a).
+  (d) Share unmodified or modified copies free of charge, provided that:
+      - This License file is included, unaltered, in every copy;
+      - The attribution notice in Section 3 is preserved;
+      - Any modifications are clearly identified and dated.
+  (e) Submit contributions (pull requests, patches, issues) to the original
+      project at https://github.com/userJesus/ghost.
+
+
+2. PROHIBITED USES
+-------------------
+The following uses are strictly PROHIBITED and require a separate, paid
+commercial license from the Author (see Section 6):
+
+  (a) Any COMMERCIAL USE, defined as any use of the Software intended for or
+      directed toward commercial advantage or monetary compensation, including
+      but not limited to:
+        - Selling, licensing, renting, or leasing the Software, its copies, or
+          derivative works;
+        - Using the Software to provide paid or revenue-generating services
+          to any third party (including SaaS, consulting, or agency work);
+        - Incorporating the Software, in whole or in part, into a commercial
+          product or service;
+        - Bundling, re-packaging, or distributing the Software as part of any
+          paid offering;
+        - Using the Software within a for-profit enterprise's day-to-day
+          operations;
+        - Monetizing the Software through advertising, subscriptions, dynamic
+          paywalls, sponsorships, or any other means;
+        - Training or fine-tuning machine-learning models for commercial use
+          on the Software's source code or output.
+
+  (b) Sublicensing the Software or relicensing it under terms more permissive
+      than this License.
+
+  (c) Removing, obscuring, or altering the Author attribution, the copyright
+      notice, or any portion of this License.
+
+  (d) Misrepresenting the origin of the Software, or implying endorsement by
+      the Author without prior written consent.
+
+  (e) Using the Software to commit any illegal act or to violate the rights
+      of third parties.
+
+
+3. ATTRIBUTION
+---------------
+Every copy, modified version, derivative work, distribution, or public display
+of the Software MUST conspicuously preserve the following notice:
+
+    "Ghost — Copyright © 2026 Jesus Oliveira. Source-available under NCSAL v1.0.
+     Original project: https://github.com/userJesus/ghost"
+
+
+4. LEGAL BASIS AND JURISDICTION (Brazilian Law)
+------------------------------------------------
+This License is governed by and construed in accordance with the laws of the
+Federative Republic of Brazil. Any dispute arising out of or in connection with
+this License shall be subject to the exclusive jurisdiction of the courts of
+the State of São Paulo, Brazil.
+
+The prohibitions set forth in Section 2 are supported by, and any violation
+thereof shall constitute a breach of:
+
+  • Lei nº 9.609, de 19 de fevereiro de 1998 ("Lei do Software")
+    — Art. 1º: software is protected as an intellectual work of authorship.
+    — Art. 2º: applicable copyright protections extend to software.
+    — Art. 9º: the use of software by third parties requires express
+      authorization by the rights holder, granted by license or assignment.
+    — Art. 12: unauthorized reproduction, in whole or in part, for commercial
+      purposes, constitutes a civil and criminal infringement.
+
+  • Lei nº 9.610, de 19 de fevereiro de 1998 ("Lei de Direitos Autorais")
+    — Art. 7º, XII: computer programs are expressly protected works.
+    — Art. 28: the Author has the exclusive right to use, enjoy, and dispose
+      of the work.
+    — Art. 29: depends on the prior and express authorization of the Author
+      any full or partial use of the work, including reproduction, distribution,
+      translation, adaptation, and any form of economic exploitation.
+    — Art. 46: provides a closed list of uses that do not constitute
+      infringement (e.g., private transcription of short excerpts, accessibility
+      uses) — commercial exploitation is NEVER among them.
+    — Arts. 101–110: establish civil remedies, including seizure, damages, and
+      profits disgorgement for infringement.
+
+  • Decreto-Lei nº 2.848, de 7 de dezembro de 1940 ("Código Penal")
+    — Art. 184, §1º: reproduction of intellectual work with intent of direct
+      or indirect commercial gain, without the author's express authorization,
+      is a criminal offense punishable with imprisonment of 2 (two) to 4 (four)
+      years and a fine.
+    — Art. 184, §2º: the same penalty applies to anyone who distributes,
+      sells, offers, or keeps in deposit, for commercial purposes, a copy of
+      intellectual work produced in violation of the author's rights.
+
+By breaching this License — particularly its Section 2 — the infringer exposes
+themselves to civil liability (under Lei 9.609/98 and Lei 9.610/98) AND
+criminal prosecution (under Art. 184 of the Código Penal), in addition to any
+immediate injunctive relief sought by the Author.
+
+
+5. DISCLAIMER OF WARRANTY AND LIMITATION OF LIABILITY
+------------------------------------------------------
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+FITNESS FOR A PARTICULAR PURPOSE, AND NON-INFRINGEMENT. IN NO EVENT SHALL THE
+AUTHOR BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY, WHETHER IN AN
+ACTION OF CONTRACT, TORT, OR OTHERWISE, ARISING FROM, OUT OF, OR IN CONNECTION
+WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+The Software may interact with third-party services (e.g., OpenAI, GitHub) and
+may install or rely upon third-party drivers (e.g., BlackHole on macOS). Such
+third-party components are governed by their own licenses and the Author makes
+no warranty whatsoever regarding them.
+
+
+6. COMMERCIAL LICENSING
+------------------------
+Commercial use requires a separate written agreement with the Author.
+To request a commercial license, contact:
+
+    Jesus Oliveira <contato.jesusoliveira@gmail.com>
+    LinkedIn: https://www.linkedin.com/in/ojesus
+    GitHub:   https://github.com/userJesus
+
+
+7. TERMINATION
+---------------
+This License and the rights granted hereunder will terminate automatically
+upon any breach by you of the terms of this License. Sections 2, 4, 5, and 6
+survive termination.
+
+
+8. SEVERABILITY
+----------------
+If any provision of this License is held to be unenforceable or invalid, such
+provision shall be modified to the minimum extent necessary to make it
+enforceable. All other provisions shall remain in full force and effect.
+
+
+=================================================================
+                    VERSÃO RESUMIDA EM PORTUGUÊS
+=================================================================
+
+Ghost — Licença de Código Fonte Disponível e Não-Comercial (NCSAL) v1.0
+Copyright © 2026 Jesus Oliveira <contato.jesusoliveira@gmail.com>
+
+RESUMO DOS TERMOS (o texto vinculante é a versão em inglês acima):
+
+ ✓ Permitido: uso pessoal, estudo, ensino, pesquisa acadêmica sem fins
+   lucrativos, modificações para estes fins, contribuições ao projeto original.
+
+ ✗ Proibido SEM licença comercial separada: qualquer uso comercial, venda,
+   SaaS, consultoria paga usando o software, incorporação em produtos pagos,
+   monetização via anúncios ou assinatura, uso por empresas em suas operações
+   diárias de faturamento.
+
+ ⚖ Fundamento legal (Brasil): Lei 9.609/98 (Lei do Software), Lei 9.610/98
+   (Direitos Autorais) e Art. 184 do Código Penal. A violação expõe o infrator
+   a processo civil E criminal (pena de 2 a 4 anos de reclusão no caso de
+   exploração comercial sem autorização).
+
+ ✉ Licenciamento comercial: contate Jesus Oliveira pelos canais acima.

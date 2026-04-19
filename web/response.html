@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <title>Ghost · Conversa</title>
     <script src="vendor/marked.min.js"></script>
+    <link rel="stylesheet" href="pixel-ghost.css">
     <style>
         :root {
             --mica-base: #202020;
@@ -452,17 +453,8 @@
 <body>
     <div class="panel">
         <div class="header">
-            <div class="brand-icon"></div>
-            <span class="brand-text">Ghost</span>
-            <span class="brand-sub">· Conversa</span>
+            <span class="brand-text" id="popupTitle">Conversa</span>
             <div class="head-actions">
-                <button class="head-btn" id="autoSpeakBtn" onclick="toggleAutoSpeak()"
-                        data-tooltip-pos="below" data-tooltip="Leitura automática">
-                    <svg viewBox="0 0 14 14" fill="none">
-                        <path d="M5 4.5H3a1 1 0 00-1 1v3a1 1 0 001 1h2l3 2.5v-10L5 4.5z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/>
-                        <path d="M10 5.2c.8.7.8 2.9 0 3.6" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/>
-                    </svg>
-                </button>
                 <button class="head-btn" onclick="stopSpeaking()" data-tooltip-pos="below" data-tooltip="Parar leitura" id="stopBtn" style="display:none">
                     <svg viewBox="0 0 12 12" fill="none"><rect x="3" y="3" width="6" height="6" rx="1" fill="currentColor"/></svg>
                 </button>
@@ -473,7 +465,7 @@
         </div>
         <div class="chat" id="chat">
             <div class="empty">
-                <div class="empty-icon">✦</div>
+                <div class="empty-icon pixel-ghost"></div>
                 <div>Nenhuma interação ainda</div>
                 <div style="font-size:11px;opacity:0.7">Digite algo na barra inferior</div>
             </div>
@@ -645,13 +637,23 @@
             try {
                 const sel = window.getSelection();
                 const selected = sel ? sel.toString().trim() : '';
-                if (!selected) return;
+                const span = btn.querySelector('span');
+                if (!selected) {
+                    const orig = span.textContent;
+                    span.textContent = 'Arraste no texto primeiro';
+                    setTimeout(() => { span.textContent = orig; }, 1500);
+                    return;
+                }
                 const msgEl = btn.closest('.msg');
                 if (msgEl && sel.rangeCount > 0) {
-                    if (!msgEl.contains(sel.getRangeAt(0).commonAncestorContainer)) return;
+                    if (!msgEl.contains(sel.getRangeAt(0).commonAncestorContainer)) {
+                        const orig = span.textContent;
+                        span.textContent = 'Selecione dentro da resposta';
+                        setTimeout(() => { span.textContent = orig; }, 1500);
+                        return;
+                    }
                 }
                 await navigator.clipboard.writeText(selected);
-                const span = btn.querySelector('span');
                 const orig = span.textContent;
                 btn.classList.add('flash');
                 span.textContent = 'Trecho copiado';
@@ -660,6 +662,21 @@
                     span.textContent = orig;
                 }, 1500);
             } catch (e) { console.warn('copy sel failed', e); }
+        };
+
+        window.branchFromPopup = async function(idx) {
+            try {
+                if (!window.pywebview?.api?.branch_main_conversation) {
+                    console.warn('branch api not available');
+                    return;
+                }
+                await window.pywebview.api.branch_main_conversation(idx);
+                // O main window vai sair do compact + atualizar a conversa.
+                // Fecha o popup pois o usuário verá o novo chat no main.
+                try { window.closePopup && window.closePopup(); } catch (e) {}
+            } catch (e) {
+                console.warn('branch popup failed', e);
+            }
         };
 
         window.toggleSpeakMsg = async function(idx, rawText) {
@@ -700,10 +717,19 @@
             _refreshSpeakButtons();
         };
 
+        window.setPopupTitle = function(title) {
+            const el = document.getElementById('popupTitle');
+            if (!el) return;
+            const t = (title || '').trim();
+            // Trunca pra caber no header
+            const shown = t.length > 40 ? t.slice(0, 37) + '…' : t;
+            el.textContent = shown || 'Conversa';
+        };
+
         window.setMessages = function(messages) {
             const chat = document.getElementById('chat');
             if (!messages || !messages.length) {
-                chat.innerHTML = `<div class="empty"><div class="empty-icon">✦</div><div>Nenhuma interação ainda</div><div style="font-size:11px;opacity:0.7">Digite algo na barra inferior</div></div>`;
+                chat.innerHTML = `<div class="empty"><div class="empty-icon pixel-ghost"></div><div>Nenhuma interação ainda</div><div style="font-size:11px;opacity:0.7">Digite algo na barra inferior</div></div>`;
                 _lastMessagesCount = 0;
                 return;
             }
@@ -760,13 +786,17 @@
                                <svg viewBox="0 0 14 14" fill="none"><rect x="3" y="3" width="7" height="9" rx="1" stroke="currentColor" stroke-width="1.2"/><path d="M5 3V2a1 1 0 011-1h5a1 1 0 011 1v8a1 1 0 01-1 1h-1" stroke="currentColor" stroke-width="1.2"/></svg>
                                <span>Copiar</span>
                              </button>
-                             <button class="msg-action-btn" data-idx="${idx}" data-tooltip="Copiar trecho selecionado" onclick='copyPopupSel(${idx}, this)'>
+                             <button class="msg-action-btn" data-idx="${idx}" data-tooltip="Arraste no texto pra selecionar, depois clique aqui" onmousedown="event.preventDefault()" onclick='copyPopupSel(${idx}, this)'>
                                <svg viewBox="0 0 14 14" fill="none"><path d="M3 3h8M3 6h8M3 9h5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><rect x="7" y="7" width="5" height="5" rx="0.5" stroke="currentColor" stroke-width="1.2"/></svg>
                                <span>Copiar trecho</span>
                              </button>
+                             <button class="msg-action-btn" data-idx="${idx}" data-tooltip="Abrir novo chat com contexto desta conversa" onclick='branchFromPopup(${idx})'>
+                               <svg viewBox="0 0 14 14" fill="none"><circle cx="3.5" cy="3" r="1.5" stroke="currentColor" stroke-width="1.2"/><circle cx="3.5" cy="11" r="1.5" stroke="currentColor" stroke-width="1.2"/><circle cx="10.5" cy="7" r="1.5" stroke="currentColor" stroke-width="1.2"/><path d="M3.5 4.5v5M5 3c2 0 4 1 5.5 3M5 11c2 0 4-1 5.5-3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+                               <span>Branch</span>
+                             </button>
                            </div>`
                         : '';
-                    return `<div class="msg"><div class="msg-assistant"><div class="msg-assistant-head"><div class="avatar">✦</div><span class="tag">ASSISTANT</span>${actions}</div><div class="msg-assistant-body">${bodyHtml}</div></div></div>`;
+                    return `<div class="msg"><div class="msg-assistant"><div class="msg-assistant-head"><div class="avatar pixel-ghost-mini"></div><span class="tag">ASSISTANT</span>${actions}</div><div class="msg-assistant-body">${bodyHtml}</div></div></div>`;
                 }
             }).join('');
             chat.innerHTML = html;

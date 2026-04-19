@@ -68,6 +68,93 @@ def hide_from_capture(hwnd: int, enabled: bool = True, force_redraw: bool = Fals
         return False
 
 
+def set_dwm_shadow(hwnd: int, enabled: bool) -> bool:
+    """Habilita/desabilita a sombra DWM que o Windows desenha ao redor da
+    janela. Quando disabled, remove a borda escura que aparece ao redor
+    mesmo com region clipping."""
+    if not hwnd:
+        return False
+    try:
+        DWMWA_NCRENDERING_POLICY = 2
+        DWMNCRP_ENABLED = 2
+        DWMNCRP_DISABLED = 1
+        value = ctypes.c_int(DWMNCRP_ENABLED if enabled else DWMNCRP_DISABLED)
+        ctypes.windll.dwmapi.DwmSetWindowAttribute(
+            hwnd, DWMWA_NCRENDERING_POLICY,
+            ctypes.byref(value), ctypes.sizeof(value),
+        )
+        return True
+    except Exception as e:
+        print(f"[win_focus] set_dwm_shadow error: {e}", flush=True)
+        return False
+
+
+def set_round_region(hwnd: int, w: int = 0, h: int = 0, corner: int = 0) -> bool:
+    """Clippa a janela num retângulo arredondado centralizado.
+    w, h: tamanho da região em pixels físicos. corner: raio dos cantos.
+    Se w<=0 ou h<=0, desabilita (volta retangular).
+    Pixels fora da região não são desenhados — OS-level transparency,
+    compatível com WDA_EXCLUDEFROMCAPTURE.
+    """
+    if not hwnd:
+        return False
+    try:
+        if w <= 0 or h <= 0:
+            win32gui.SetWindowRgn(hwnd, 0, True)
+            return True
+        rect = win32gui.GetWindowRect(hwnd)
+        win_w = rect[2] - rect[0]
+        win_h = rect[3] - rect[1]
+        if win_w <= 0 or win_h <= 0:
+            return False
+        left = (win_w - w) // 2
+        top = (win_h - h) // 2
+        right = left + w
+        bottom = top + h
+        gdi32 = ctypes.windll.gdi32
+        if corner > 0:
+            hrgn = gdi32.CreateRoundRectRgn(left, top, right, bottom, corner, corner)
+        else:
+            hrgn = gdi32.CreateEllipticRgn(left, top, right, bottom)
+        if not hrgn:
+            return False
+        win32gui.SetWindowRgn(hwnd, hrgn, True)
+        return True
+    except Exception as e:
+        print(f"[win_focus] set_round_region error: {e}", flush=True)
+        return False
+
+
+def set_color_key(hwnd: int, rgb_tuple) -> bool:
+    """Aplica chroma-key transparency: pixels da cor EXATA viram transparentes.
+    rgb_tuple: tupla (r, g, b). Passe None para desabilitar."""
+    if not hwnd:
+        return False
+    try:
+        ex_style = win32gui.GetWindowLong(hwnd, win32con.GWL_EXSTYLE)
+        if rgb_tuple is None:
+            # Desabilita: remove LAYERED + reseta atributos
+            if ex_style & win32con.WS_EX_LAYERED:
+                win32gui.SetWindowLong(
+                    hwnd, win32con.GWL_EXSTYLE, ex_style & ~win32con.WS_EX_LAYERED
+                )
+            return True
+        r, g, b = rgb_tuple
+        # Windows usa 0x00BBGGRR (little-endian)
+        colorref = (b << 16) | (g << 8) | r
+        if not (ex_style & win32con.WS_EX_LAYERED):
+            win32gui.SetWindowLong(
+                hwnd, win32con.GWL_EXSTYLE, ex_style | win32con.WS_EX_LAYERED
+            )
+        win32gui.SetLayeredWindowAttributes(
+            hwnd, colorref, 255, win32con.LWA_COLORKEY
+        )
+        return True
+    except Exception as e:
+        print(f"[win_focus] set_color_key error: {e}", flush=True)
+        return False
+
+
 def set_window_opacity(hwnd: int, alpha: float) -> bool:
     """Set window opacity 0.0 (transparent) to 1.0 (opaque).
 

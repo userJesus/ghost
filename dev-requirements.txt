@@ -6,3 +6,8 @@ mypy>=1.11
 reportlab>=4.2
 types-Pillow
 pre-commit>=3.8
+# Packaging
+pyinstaller>=6.10
+svglib>=1.5
+# Mac-only bundler (installed via `pip install py2app` on macOS host)
+# py2app>=0.28

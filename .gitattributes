@@ -1,0 +1,22 @@
+# Force consistent line endings.
+* text=auto eol=lf
+
+# Windows-native tooling: keep CRLF for these.
+*.bat      text eol=crlf
+*.cmd      text eol=crlf
+*.ps1      text eol=crlf
+*.iss      text eol=crlf
+
+# Shell scripts: always LF, even on Windows checkouts.
+*.sh       text eol=lf
+
+# Binary assets — never normalise.
+*.png      binary
+*.ico      binary
+*.icns     binary
+*.pdf      binary
+*.jpg      binary
+*.svg      text
+
+# Language hints for GitHub Linguist — keep the vendor/ folder from skewing stats.
+web/vendor/** linguist-vendored

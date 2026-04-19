@@ -1,9 +1,9 @@
 function ghostApp() {
     return {
         // State
-        presets: [],
+        presets: ['Responder pergunta'],
         monitors: [],
-        selectedPreset: '',
+        selectedPreset: 'Responder pergunta',
         selectedMonitor: 1,
         captureMode: 'tela',
         maxScrolls: 40,
@@ -28,6 +28,9 @@ function ghostApp() {
         captureVisible: false,
         settingsModalOpen: false,
         settings: { has_openai_key: false, masked_key: "", openai_model: "", available_models: [] },
+        appInfo: { version: "", author: "", authorGithub: "", authorLinkedin: "", repoUrl: "", releasesUrl: "" },
+        updateInfo: { hasUpdate: false, current: "", latest: "", releaseUrl: "", releaseNotes: "" },
+        updateBannerDismissed: false,
         openaiKeyInput: "",
         savingKey: false,
         settingsError: "",
@@ -42,6 +45,7 @@ function ghostApp() {
         voiceTranscribing: false,   // ativo enquanto o Whisper processa
         voiceElapsed: '0:00',
         _voiceTimer: null,
+        pendingCapture: null,       // { thumbnail, label } — imagem capturada aguardando pergunta do usuário
         systemTranscript: '',       // contexto transcrito do áudio do sistema
                                     // (aparece acima do input pra usuário
                                     // combinar com a pergunta dele)
@@ -53,6 +57,8 @@ function ghostApp() {
         closeConfirmOpen: false,    // modal de confirmação ao clicar X
         // ===== Histórico =====
         currentConvId: '',          // id da conversa atual
+        currentConvTitle: '',       // título dinâmico (usado no popup também)
+        _titledAtMsgCount: 0,       // quantas msgs a conversa tinha no último refresh de título
         historyModalOpen: false,
         historyList: [],
         _savingHistory: false,
@@ -184,14 +190,38 @@ function ghostApp() {
 
                 await this._waitForApi();
 
-                try {
-                    this.settings = await window.pywebview.api.get_settings() || this.settings;
-                } catch (e) {}
+                // get_settings com retry — o bridge pywebview às vezes não está
+                // 100% pronto no primeiro tick mesmo após _waitForApi, então
+                // tentamos até 5x com pausa curta antes de desistir.
+                let settingsOk = false;
+                for (let attempt = 0; attempt < 5; attempt++) {
+                    try {
+                        const r = await window.pywebview.api.get_settings();
+                        if (r && typeof r.has_openai_key === 'boolean') {
+                            this.settings = r;
+                            settingsOk = true;
+                            break;
+                        }
+                    } catch (e) {
+                        console.warn('[init] get_settings falhou (tentativa ' + (attempt + 1) + '):', e);
+                    }
+                    await new Promise(r => setTimeout(r, 150));
+                }
+                if (!settingsOk) {
+                    console.error('[init] get_settings nunca retornou válido — assumindo sem chave');
+                }
 
                 // Auto-open settings modal on first run if no API key configured
                 if (!this.settings.has_openai_key) {
                     this.settingsModalOpen = true;
                 }
+
+                // Load app metadata (version, author) + kick off update check.
+                try {
+                    const info = await window.pywebview.api.get_app_info();
+                    if (info && !info.error) this.appInfo = info;
+                } catch (_) { /* offline or bridge hiccup */ }
+                this._scheduleUpdateCheck();
 
                 try {
                     this.presets = await window.pywebview.api.get_presets();
@@ -388,6 +418,130 @@ function ghostApp() {
                 setTimeout(() => { this.modelSaveMsg = ''; }, 2000);
             } catch (e) {
                 this.modelSaveMsg = 'Erro: ' + (e?.message || e);
+            }
+        },
+
+        // --- Branch: resume o contexto até a mensagem selecionada e abre novo chat ---
+        async branchFromMessage(idx) {
+            console.log('[branch] clicked idx=', idx, 'msgs=', this.messages.length);
+            if (idx < 0 || idx >= this.messages.length) {
+                console.warn('[branch] idx inválido');
+                return;
+            }
+            if (this.busy) {
+                this.setStatus('Aguarde a resposta atual terminar');
+                return;
+            }
+            try {
+                // 1. Persiste a conversa atual antes de trocar
+                if (this.messages.length > 0) {
+                    try { await this._persistHistory(); } catch (e) {}
+                }
+
+                // 2. Serializa mensagens até idx (inclusive) pra enviar pro resumo
+                const contextMsgs = this.messages.slice(0, idx + 1)
+                    .filter(m => (m.text || '').trim() || m.transcript)
+                    .map(m => ({
+                        role: m.role,
+                        text: m.transcript
+                            ? `[trecho transcrito] ${m.transcript}\n\n${m.text || ''}`
+                            : (m.text || ''),
+                    }));
+
+                if (!contextMsgs.length) {
+                    this.setStatus('Nada pra resumir');
+                    return;
+                }
+
+                // 3. Estado de loading — mostra card visível enquanto IA resume
+                this.busy = true;
+                const origMessages = this.messages;
+                this.messages = [{
+                    role: 'assistant',
+                    text:
+                        '**🌿 Criando branch da conversa…**\n\n' +
+                        '*Estou resumindo o contexto das mensagens anteriores ' +
+                        'para que o novo chat comece com tudo que você precisa. ' +
+                        'Aguarde um instante…*',
+                    loading: false,
+                    isBranchSummary: true,
+                    streaming: true,  // usa o pulse do streaming pra dar vida
+                }];
+                this.setStatus('Resumindo contexto…');
+                await this.$nextTick();
+
+                // 4. Chama o resumidor no Python
+                let summary = '';
+                try {
+                    const r = await window.pywebview.api.branch_summarize(contextMsgs);
+                    if (r?.error) {
+                        // Reverte e mostra erro
+                        this.messages = origMessages;
+                        this.busy = false;
+                        this.setStatus('Erro ao resumir: ' + r.error);
+                        return;
+                    }
+                    summary = r?.summary || '';
+                } catch (e) {
+                    this.messages = origMessages;
+                    this.busy = false;
+                    this.setStatus('Erro ao resumir: ' + (e?.message || e));
+                    return;
+                }
+
+                // 5. Gera novo ID
+                let newId = '';
+                try {
+                    const r = await window.pywebview.api.history_new_id();
+                    newId = (r && r.id) || ('conv-' + Date.now());
+                } catch (e) {
+                    newId = 'conv-' + Date.now();
+                }
+
+                // 6. Monta a mensagem-aviso com o resumo formatado
+                const noticeText =
+                    '**🌿 Continuação de conversa anterior**\n\n' +
+                    '*Resumo do contexto até aqui:*\n\n' +
+                    summary +
+                    '\n\n---\n\n' +
+                    '*Continue sua pergunta abaixo — tenho esse contexto em mente.*';
+
+                const newMsgs = [{
+                    role: 'assistant',
+                    text: noticeText,
+                    isBranchSummary: true,
+                }];
+
+                // 7. Troca para nova conversa
+                this.currentConvId = newId;
+                this.currentConvTitle = '';
+                this.messages = newMsgs;
+                this.selectModeIdx = -1;
+                this.copiedIdx = -1;
+                this.copiedSelIdx = -1;
+                this.speakingIdx = -1;
+                this.busy = false;
+                this._titleRequested = false;
+                this._titledAtMsgCount = 0;
+                this._syncPopupTitle();
+
+                // 8. Reseta o histórico do servidor e injeta o resumo como
+                // mensagem de sistema — assim as próximas respostas têm contexto.
+                try {
+                    await window.pywebview.api.branch_reset_history(summary);
+                } catch (e) { console.warn('[branch] reset history falhou:', e); }
+
+                // 9. Persiste a nova conv no histórico local
+                try {
+                    await window.pywebview.api.history_save(newId, newMsgs);
+                } catch (e) {}
+
+                this.setStatus('✨ Novo chat criado com resumo do contexto');
+                await this.$nextTick();
+            } catch (e) {
+                console.error('[branch] erro:', e);
+                this.busy = false;
+                this.setStatus('Erro ao criar branch: ' + (e?.message || e));
             }
         },
 
@@ -747,6 +901,40 @@ function ghostApp() {
             this.docked = false;
         },
 
+        _scheduleUpdateCheck() {
+            // Fire-and-forget on init, then re-check every 6h while the app runs.
+            const run = async () => {
+                try {
+                    const r = await window.pywebview.api.check_for_updates();
+                    if (r && !r.error) this.updateInfo = r;
+                } catch (_) { /* offline */ }
+            };
+            run();
+            if (!this._updateTimer) {
+                this._updateTimer = setInterval(run, 6 * 60 * 60 * 1000);
+            }
+        },
+        async checkForUpdatesNow() {
+            try {
+                const r = await window.pywebview.api.check_for_updates(true);
+                if (r && !r.error) {
+                    this.updateInfo = r;
+                    this.updateBannerDismissed = false;
+                    this.setStatus(r.hasUpdate
+                        ? `Nova versão disponível: ${r.latest}`
+                        : `Você está na versão mais recente (${r.current})`);
+                } else {
+                    this.setStatus('Não foi possível verificar atualizações (offline?)');
+                }
+            } catch (e) { this.setStatus('Erro ao verificar atualizações'); }
+        },
+        openReleasePage() {
+            const url = this.updateInfo.releaseUrl || this.appInfo.releasesUrl;
+            if (!url) return;
+            try { window.pywebview.api.open_url ? window.pywebview.api.open_url(url) : window.open(url, '_blank'); }
+            catch (_) { window.open(url, '_blank'); }
+        },
+
         async enterCompact() {
             await window.pywebview.api.enter_compact_bar();
             this.compactMode = true;
@@ -769,6 +957,8 @@ function ghostApp() {
                     loading: !!m.loading,
                 }));
                 window.pywebview.api.show_response_popup(serializable);
+                // Propaga título depois dum delay curto (popup precisa estar montado)
+                setTimeout(() => this._syncPopupTitle(), 200);
             } catch (e) {}
         },
 
@@ -883,6 +1073,10 @@ function ghostApp() {
                 const conv = r.conversation || {};
                 this.messages = conv.messages || [];
                 this.currentConvId = conv.id || '';
+                this.currentConvTitle = conv.title || '';
+                this._titleRequested = true;
+                this._titledAtMsgCount = (conv.messages || []).length;
+                this._syncPopupTitle();
                 this.historyModalOpen = false;
                 this.scrollToBottom();
                 this.setStatus('Conversa carregada');
@@ -915,10 +1109,47 @@ function ghostApp() {
                     image: m.image || null,
                     transcript: m.transcript || null,
                     needsApiKey: !!m.needsApiKey,
+                    isBranchSummary: !!m.isBranchSummary,
                 }));
                 await window.pywebview.api.history_save(this.currentConvId, serial);
+
+                // Título DINÂMICO: refaz a cada 4 mensagens novas (conversa pode
+                // mudar de tópico). Primeira geração aos 2 msgs, depois 6, 10, 14…
+                const count = serial.length;
+                const hadEnough = count >= 2;
+                const shouldRefresh = hadEnough && (count - this._titledAtMsgCount >= 4 || !this._titleRequested);
+                if (shouldRefresh) {
+                    this._titleRequested = true;
+                    this._titledAtMsgCount = count;
+                    try {
+                        const r = await window.pywebview.api.history_suggest_title(this.currentConvId);
+                        // Aguarda ~2s pro worker terminar de gerar e ler do disco
+                        setTimeout(() => this._refreshCurrentTitle(), 2500);
+                    } catch (e) {}
+                }
             } catch (e) { console.warn('[history] persist', e); }
             this._savingHistory = false;
+        },
+
+        async _refreshCurrentTitle() {
+            // Busca título atualizado do conv atual e propaga pra UI + popup
+            if (!this.currentConvId) return;
+            try {
+                const r = await window.pywebview.api.history_get(this.currentConvId);
+                if (r?.ok && r.conversation?.title) {
+                    this.currentConvTitle = r.conversation.title;
+                    this._syncPopupTitle();
+                }
+            } catch (e) {}
+        },
+
+        _syncPopupTitle() {
+            // Atualiza o header do popup (modo compact) via evaluate_js no popup
+            try {
+                if (window.pywebview?.api?.update_popup_title) {
+                    window.pywebview.api.update_popup_title(this.currentConvTitle || '');
+                }
+            } catch (e) {}
         },
 
         // ============ Ações rápidas sobre a resposta ============
@@ -970,10 +1201,8 @@ function ghostApp() {
                 } else if (payload.text && !last.text) {
                     last.text = payload.text;
                 }
-                if (payload.watched_thumb && this.messages.length >= 2) {
-                    const userMsg = this.messages[this.messages.length - 2];
-                    if (userMsg && userMsg.role === 'user') userMsg.image = payload.watched_thumb;
-                }
+                // Watch mode: NÃO anexa o thumbnail na msg do usuário.
+                // A imagem ainda vai pra IA via server-side, só não polui o chat.
                 this.busy = false;
                 this._currentStreamId = '';
                 this.scrollToBottom();
@@ -1083,7 +1312,11 @@ function ghostApp() {
             window.pywebview.api.clear_history();
             this.messages = [];
             this.currentConvId = '';
+            this.currentConvTitle = '';
             this.droppedFiles = [];
+            this._titleRequested = false;
+            this._titledAtMsgCount = 0;
+            this._syncPopupTitle();
             this.setStatus('Nova conversa');
         },
 
@@ -1267,13 +1500,26 @@ function ghostApp() {
         },
 
         // --- Capture flows ---
+        // Agora a captura NÃO envia direto: ela deixa a imagem pendente acima
+        // do composer pra o usuário digitar/gravar a pergunta e enviar junto.
         async triggerCapture() {
             if (this.busy) return;
             if (!this.ready) { this.setStatus('Aguarde, inicializando...'); return; }
-            if (!this._ensurePreset()) { this.setStatus('Nenhum preset disponível'); return; }
             if (this.captureMode === 'tela') await this.captureFullscreen();
             else if (this.captureMode === 'area') await this.captureArea();
             else if (this.captureMode === 'scroll') await this.captureScroll();
+        },
+
+        _setPendingCapture(result, label) {
+            this.pendingCapture = {
+                thumbnail: result.thumbnail,
+                label: label,
+            };
+            this.setStatus(label + ' — digite sua pergunta e envie');
+        },
+
+        clearPendingCapture() {
+            this.pendingCapture = null;
         },
 
         async captureFullscreen() {
@@ -1282,7 +1528,7 @@ function ghostApp() {
             try {
                 const result = await window.pywebview.api.capture_fullscreen();
                 if (result.error) { this.setStatus('Erro: ' + result.error); return; }
-                await this._submitWithImage(result);
+                this._setPendingCapture(result, 'Tela capturada');
             } finally { this.busy = false; }
         },
 
@@ -1293,7 +1539,7 @@ function ghostApp() {
                 const result = await window.pywebview.api.capture_area();
                 if (result.cancelled) { this.setStatus('Cancelado'); return; }
                 if (result.error) { this.setStatus('Erro: ' + result.error); return; }
-                await this._submitWithImage(result);
+                this._setPendingCapture(result, 'Área capturada');
             } finally { this.busy = false; }
         },
 
@@ -1311,8 +1557,7 @@ function ghostApp() {
                     this.selectedMonitor, this.maxScrolls
                 );
                 if (result.error) { this.setStatus('Erro: ' + result.error); return; }
-                this.setStatus(`${result.pages} páginas capturadas`);
-                await this._submitWithImage(result);
+                this._setPendingCapture(result, `${result.pages} páginas capturadas`);
             } finally { this.busy = false; }
         },
 
@@ -1372,24 +1617,36 @@ function ghostApp() {
         },
 
         async sendMessage() {
+            // Guarda contra envio durante gravação/transcrição: senão o usuário
+            // perde o áudio que estava gravando e manda só o que já tem.
+            if (this.voiceRecording) {
+                this.setStatus('Pare a gravação antes de enviar');
+                return;
+            }
+            if (this.voiceTranscribing) {
+                this.setStatus('Aguarde a transcrição terminar');
+                return;
+            }
             const questionRaw = this.inputText.trim();
             const ctx = this.systemTranscript.trim();
             const files = [...this.droppedFiles];
-            if (!questionRaw && !ctx && !files.length) return;
+            const capture = this.pendingCapture;
+            if (!questionRaw && !ctx && !files.length && !capture) return;
             if (this.busy) return;
             if (!this.ready) { this.setStatus('Aguarde...'); return; }
 
             if (!this.settings?.has_openai_key) {
-                this.messages.push({ role: 'user', text: questionRaw || ctx || '(arquivo)' });
+                this.messages.push({ role: 'user', text: questionRaw || ctx || '(anexo)' });
                 this.messages.push({ role: 'assistant', needsApiKey: true, text: '' });
                 this.inputText = '';
                 this.systemTranscript = '';
                 this.droppedFiles = [];
+                this.pendingCapture = null;
                 this.scrollToBottom();
                 return;
             }
 
-            // Monta contexto de arquivos droppados
+            // Monta contexto de arquivos droppados + imagem de captura pendente
             let fileContext = '';
             let fileImage = null;
             for (const f of files) {
@@ -1399,9 +1656,14 @@ function ghostApp() {
                     fileImage = f.data_url;
                 }
             }
+            // Captura da tela pendente tem prioridade visual (é o que o usuário
+            // acabou de capturar pra essa pergunta específica)
+            if (capture && capture.thumbnail) {
+                fileImage = capture.thumbnail;
+            }
 
             const question = questionRaw || (ctx ? 'O que você pode me dizer sobre isso?' :
-                                              (fileContext || fileImage ? 'Analise o arquivo em anexo.' : ''));
+                                              (fileContext || fileImage ? 'Analise o anexo.' : ''));
 
             // Texto final enviado pro GPT
             const parts = [];
@@ -1436,6 +1698,7 @@ function ghostApp() {
             this.inputText = '';
             this.systemTranscript = '';
             this.droppedFiles = [];
+            this.pendingCapture = null;
             this.busy = true;
 
             const mode = this.meetingRunning ? 'reunião ao vivo'
@@ -1480,7 +1743,7 @@ function ghostApp() {
                     }
                 } else {
                     lastMsg.text = result.text;
-                    if (result.watched_thumb && !userMsg.image) userMsg.image = result.watched_thumb;
+                    // Watch mode: thumbnail não aparece no chat (mantém o visual limpo)
                     navigator.clipboard?.writeText(result.text).catch(() => {});
                     this.setStatus('Copiado para clipboard');
                 }

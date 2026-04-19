@@ -16,6 +16,14 @@ env/
 build/
 dist/
 *.spec
+!ghost.spec
+installer/windows/Output/
+installer/macos/Output/
+installer/macos/build/
+# Generated icons — ICO/ICNS stay in git; PNGs + iconset are regenerated.
+assets/icon.iconset/
+assets/icon_*.png
+assets/icon.icns
 
 # IDE
 .vscode/
@@ -50,3 +58,14 @@ htmlcov/
 *.tmp
 *.bak
 docs_capture.py
+
+# AI tooling — never commit
+.claude/
+.claude.json
+CLAUDE.md
+**/CLAUDE.md
+claude-*.md
+.claude-*
+.aider*
+.cursor/
+.continue/

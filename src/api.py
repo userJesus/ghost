@@ -92,6 +92,63 @@ class GhostAPI:
 
     # ---------- Settings ----------
 
+    def open_url(self, url: str) -> dict:
+        """Open a URL in the user's default browser (used by the 'Update' banner)."""
+        try:
+            import webbrowser
+            if not url or not isinstance(url, str):
+                return {"error": "invalid url"}
+            if not (url.startswith("http://") or url.startswith("https://")):
+                return {"error": "only http(s) urls are allowed"}
+            webbrowser.open(url, new=2)
+            return {"ok": True}
+        except Exception as e:
+            return {"error": _log_error("open_url", e)}
+
+    def get_app_info(self) -> dict:
+        """Return app version + author metadata for the 'About' view and footers."""
+        try:
+            from .version import (
+                AUTHOR_EMAIL,
+                AUTHOR_GITHUB,
+                AUTHOR_LINKEDIN,
+                AUTHOR_NAME,
+                GITHUB_RELEASES_URL,
+                GITHUB_REPO_URL,
+                __version__,
+            )
+            return {
+                "version": __version__,
+                "author": AUTHOR_NAME,
+                "authorEmail": AUTHOR_EMAIL,
+                "authorLinkedin": AUTHOR_LINKEDIN,
+                "authorGithub": AUTHOR_GITHUB,
+                "repoUrl": GITHUB_REPO_URL,
+                "releasesUrl": GITHUB_RELEASES_URL,
+            }
+        except Exception as e:
+            return {"error": _log_error("get_app_info", e)}
+
+    def check_for_updates(self, force: bool = False) -> dict:
+        """Query GitHub Releases and compare with the current version.
+        Returns {hasUpdate, current, latest, releaseUrl, releaseNotes} or {error}.
+        Safe to call multiple times — result is cached in-process.
+        """
+        try:
+            from .updater import check
+            info = check(force=bool(force))
+            if info is None:
+                from .version import __version__
+                return {
+                    "hasUpdate": False,
+                    "current": __version__,
+                    "latest": __version__,
+                    "error": "offline",
+                }
+            return info.to_dict()
+        except Exception as e:
+            return {"error": _log_error("check_for_updates", e)}
+
     def get_settings(self) -> dict:
         """Return current settings (without exposing the full API key)."""
         try:
@@ -329,6 +386,137 @@ class GhostAPI:
     def history_new_id(self) -> dict:
         return {"ok": True, "id": _history.new_id()}
 
+    def update_popup_title(self, title: str) -> dict:
+        """Atualiza o header do popup de resposta com o título da conversa."""
+        try:
+            if self._response_window is None:
+                return {"ok": True}
+            safe = json.dumps(title or "")
+            try:
+                self._response_window.evaluate_js(
+                    f"window.setPopupTitle && window.setPopupTitle({safe})"
+                )
+            except Exception:
+                pass
+            return {"ok": True}
+        except Exception as e:
+            return {"error": _log_error("update_popup_title", e)}
+
+    def history_suggest_title(self, conv_id: str) -> dict:
+        """Gera título inteligente pra uma conversa via IA e persiste.
+        Roda em thread pra não bloquear — retorna imediatamente com ok.
+        Frontend pode recarregar a lista depois pra ver o título atualizado."""
+        try:
+            from .config import get_openai_key
+            if not get_openai_key():
+                return {"ok": False, "reason": "no api key"}
+
+            def worker():
+                try:
+                    from .gpt_client import generate_conversation_title
+                    conv = _history.get_conversation(conv_id)
+                    if not conv:
+                        return
+                    msgs = conv.get("messages", [])
+                    if len(msgs) < 2:
+                        return  # pouco contexto pra titular
+                    new_title = generate_conversation_title(msgs)
+                    if not new_title:
+                        return
+                    # Atualiza em disco sem tocar nas mensagens
+                    all_data = _history._load()
+                    for c in all_data.get("conversations", []):
+                        if c.get("id") == conv_id:
+                            c["title"] = new_title
+                            _history._save(all_data)
+                            print(f"[title] {conv_id} -> {new_title}", flush=True)
+                            break
+                except Exception as e:
+                    print(f"[title] worker error: {e}", flush=True)
+
+            threading.Thread(target=worker, daemon=True).start()
+            return {"ok": True}
+        except Exception as e:
+            return {"error": _log_error("history_suggest_title", e)}
+
+    def branch_summarize(self, messages: list) -> dict:
+        """Gera um resumo conciso da conversa pra usar como contexto inicial
+        de uma nova conversa (branch). Retorna {ok: True, summary: "..."}."""
+        try:
+            from .config import get_openai_key, get_openai_model
+            key = get_openai_key()
+            if not key:
+                return {"error": "Sem API key — configure nas Configurações"}
+            if not messages:
+                return {"error": "Nenhuma mensagem pra resumir"}
+
+            # Formata conversa como texto pra enviar ao resumidor
+            lines = []
+            for m in messages:
+                role = m.get("role", "user")
+                text = (m.get("text") or "").strip()
+                if not text:
+                    continue
+                tag = "Usuário" if role == "user" else "Assistente"
+                lines.append(f"{tag}: {text}")
+            convo = "\n\n".join(lines)
+            if not convo:
+                return {"error": "Conversa vazia"}
+
+            prompt = (
+                "Resuma a conversa abaixo em formato markdown conciso (3-6 bullet "
+                "points). Destaque o tópico principal, decisões tomadas, problemas "
+                "em aberto e qualquer dado específico relevante (nomes, números, "
+                "trechos de código curtos). Escreva em português. Não adicione "
+                "saudação nem despedida — só o resumo puro.\n\n"
+                "---\n\n"
+                f"{convo}\n\n"
+                "---\n\n"
+                "Resumo:"
+            )
+
+            from openai import OpenAI
+            client = OpenAI(api_key=key, timeout=45.0)
+            resp = client.chat.completions.create(
+                model=get_openai_model(),
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=500,
+                temperature=0.3,
+            )
+            summary = (resp.choices[0].message.content or "").strip()
+            return {"ok": True, "summary": summary}
+        except Exception as e:
+            return {"error": _log_error("branch_summarize", e)}
+
+    def branch_main_conversation(self, idx: int) -> dict:
+        """Chamado pelo popup pra iniciar um branch no main window.
+        Aciona o método branchFromMessage(idx) do Alpine no main e sai do modo
+        compact pra usuário ver a nova conversa."""
+        try:
+            if self._window is None:
+                return {"error": "Main window not set"}
+            idx_int = int(idx)
+            code = (
+                f"(async () => {{ "
+                f"  const a = Alpine.$data(document.body); "
+                f"  if (a && typeof a.branchFromMessage === 'function') {{ "
+                f"    await a.branchFromMessage({idx_int}); "
+                f"    if (a.compactMode && typeof a.exitCompact === 'function') {{ "
+                f"      await a.exitCompact(); "
+                f"    }} "
+                f"  }} "
+                f"}})();"
+            )
+            def run():
+                try:
+                    self._window.evaluate_js(code)
+                except Exception as e:
+                    _log_error("branch_main_conversation_eval", e)
+            threading.Thread(target=run, daemon=True).start()
+            return {"ok": True}
+        except Exception as e:
+            return {"error": _log_error("branch_main_conversation", e)}
+
     # ============ Streaming chat (token-by-token via evaluate_js) ============
 
     def send_text_streaming(self, text: str, stream_id: str) -> dict:
@@ -358,7 +546,7 @@ class GhostAPI:
         try:
             from openai import OpenAI
 
-            from .gpt_client import SYSTEM_PROMPT
+            from .gpt_client import BASE_PERSONA, SCREEN_CONTEXT_ADDENDUM, _has_image
 
             # Adiciona contexto watch/meeting se relevante (mesma lógica do send_text)
             user_content = text
@@ -379,13 +567,21 @@ class GhostAPI:
             except Exception as e:
                 print(f"[stream] watch capture skip: {e}", flush=True)
 
+            # Adiciona à history e usa o contexto acumulado (fix: sem isso,
+            # cada request era uma conversa nova sem memória)
+            user_msg = {"role": "user", "content": user_content}
+            self._history.append(user_msg)
+            history_msgs = self._history[-MAX_HISTORY:]
+
+            # System prompt condicional: só inclui addendum de screen se houver
+            # imagem em alguma msg do contexto
+            has_img = _has_image(history_msgs)
+            system_content = BASE_PERSONA + (SCREEN_CONTEXT_ADDENDUM if has_img else "")
+
             client = OpenAI(api_key=key, timeout=60.0)
             stream = client.chat.completions.create(
                 model=model,
-                messages=[
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user", "content": user_content},
-                ],
+                messages=[{"role": "system", "content": system_content}] + history_msgs,
                 max_tokens=2000,
                 stream=True,
             )
@@ -399,10 +595,15 @@ class GhostAPI:
                 except Exception as e:
                     print(f"[stream] chunk skip: {e}", flush=True)
             text_full = "".join(full)
+            # Persiste a resposta no history pra próxima chamada ter contexto
+            self._history.append({"role": "assistant", "content": text_full})
             self._stream_emit_done(stream_id, text=text_full, watched_thumb=watched_thumb)
         except Exception as e:
             err = str(e)
             print(f"[stream] worker error: {err}", flush=True)
+            # Remove user msg da history se falhou antes da resposta
+            if self._history and self._history[-1].get("role") == "user":
+                self._history.pop()
             self._stream_emit_done(stream_id, error=err)
 
     def _stream_emit_chunk(self, stream_id: str, chunk: str):
@@ -719,6 +920,27 @@ class GhostAPI:
         self._history.clear()
         self._last_image = None
         return {"ok": True}
+
+    def branch_reset_history(self, summary: str) -> dict:
+        """Chamado após um branch: limpa o histórico do servidor e injeta o
+        resumo como mensagem de sistema, pra que as próximas chamadas de chat
+        tenham o contexto condensado."""
+        try:
+            self._history.clear()
+            self._last_image = None
+            summary = (summary or "").strip()
+            if summary:
+                self._history.append({
+                    "role": "system",
+                    "content": (
+                        "Contexto de uma conversa anterior (resumo). "
+                        "Use isto como referência ao responder:\n\n"
+                        f"{summary}"
+                    ),
+                })
+            return {"ok": True}
+        except Exception as e:
+            return {"error": _log_error("branch_reset_history", e)}
 
     # ---------- Watch mode ----------
 
@@ -1231,15 +1453,16 @@ class GhostAPI:
             if self._response_window is None:
                 return {"error": "Response window not pre-created"}
 
-            # Position at right of current monitor, taking 50% of its height
+            # Position at right of current monitor, taking 50% of its height.
+            # Width matches the compact bar (820) para alinhar visualmente.
             if self._response_hwnd:
                 import win32gui
                 monitor = self._current_monitor() or (self._monitors[0] if self._monitors else None)
                 if monitor is None:
                     monitor = {"left": 0, "top": 0, "width": 1920, "height": 1080}
-                w = 420
+                w = 820
                 h = monitor["height"] // 2
-                x = monitor["left"] + monitor["width"] - w - 24
+                x = monitor["left"] + monitor["width"] - w - 12
                 y = monitor["top"] + 48
                 SWP_NOZORDER_LOCAL = 0x0004
                 SWP_NOACTIVATE_LOCAL = 0x0010

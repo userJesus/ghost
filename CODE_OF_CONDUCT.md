@@ -36,7 +36,7 @@ Este Código de Conduta se aplica a todos os espaços da comunidade, e também s
 
 ## Aplicação
 
-Comportamentos abusivos, de assédio ou de outro modo inaceitáveis podem ser reportados aos líderes da comunidade responsáveis por sua aplicação em nicola.om@gmail.com. Todas as queixas serão analisadas e investigadas prontamente e de forma justa.
+Comportamentos abusivos, de assédio ou de outro modo inaceitáveis podem ser reportados aos líderes da comunidade responsáveis por sua aplicação em contato.jesusoliveira@gmail.com. Todas as queixas serão analisadas e investigadas prontamente e de forma justa.
 
 Todos os líderes da comunidade são obrigados a respeitar a privacidade e a segurança de quem reportar qualquer incidente.
 

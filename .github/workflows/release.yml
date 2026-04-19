@@ -9,10 +9,13 @@ permissions:
   contents: write
 
 jobs:
+  # -----------------------------------------------------------------
+  # WINDOWS — PyInstaller + Inno Setup → GhostSetup-<version>.exe
+  # -----------------------------------------------------------------
   build-windows:
-    name: Build Windows executable
+    name: Build Windows installer
     runs-on: windows-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -27,47 +30,126 @@ jobs:
         with:
           path: ~\AppData\Local\pip\Cache
           key: ${{ runner.os }}-pip-release-${{ hashFiles('**/requirements.txt', '**/dev-requirements.txt') }}
-          restore-keys: |
-            ${{ runner.os }}-pip-release-
-            ${{ runner.os }}-pip-
 
       - name: Install dependencies
-        run: pip install -r requirements.txt || pip install -r dev-requirements.txt
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r dev-requirements.txt
+          pip install "svg.path" Pillow
 
-      - name: Install PyInstaller
-        run: pip install pyinstaller
+      - name: Install Inno Setup
+        run: choco install innosetup -y --no-progress
+
+      - name: Extract version
+        id: v
+        shell: pwsh
+        run: |
+          $ver = (Select-String -Path src/version.py -Pattern '__version__\s*=\s*"([^"]+)"').Matches.Groups[1].Value
+          "version=$ver" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Generate icons
+        run: python scripts/make_icons.py
 
       - name: Build with PyInstaller
-        run: pyinstaller --onefile --windowed --name Ghost --icon assets/ghost.ico --add-data "web;web" --add-data "assets;assets" main.py
+        run: pyinstaller --noconfirm --clean ghost.spec
 
-      - name: Generate SHA256 checksum
-        run: CertUtil -hashfile dist/Ghost.exe SHA256 > dist/Ghost.exe.sha256
+      - name: Compile installer (Inno Setup)
+        shell: cmd
+        run: |
+          "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DAppVersion=${{ steps.v.outputs.version }} installer\windows\ghost.iss
 
-      - name: Upload build artifact
+      - name: Upload Windows installer artifact
         uses: actions/upload-artifact@v4
         with:
           name: ghost-windows
-          path: |
-            dist/Ghost.exe
-            dist/Ghost.exe.sha256
+          path: installer/windows/Output/GhostSetup-*.exe
 
+  # -----------------------------------------------------------------
+  # macOS — py2app + productbuild with BlackHole → Ghost-<version>.dmg
+  # -----------------------------------------------------------------
+  build-macos:
+    name: Build macOS installer
+    runs-on: macos-14
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r dev-requirements.txt
+          pip install py2app Pillow "svg.path"
+
+      - name: Build macOS installer (.pkg + .dmg)
+        run: bash scripts/build_mac.sh
+
+      - name: Upload macOS artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ghost-macos
+          path: |
+            installer/macos/Output/Ghost-*.dmg
+            installer/macos/Output/GhostInstaller-*.pkg
+
+  # -----------------------------------------------------------------
+  # RELEASE — attach both installers to the GitHub release
+  # -----------------------------------------------------------------
   release:
     name: Publish GitHub release
-    needs: build-windows
+    needs: [build-windows, build-macos]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - name: Download build artifact
+      - name: Download Windows artifact
         uses: actions/download-artifact@v4
         with:
           name: ghost-windows
           path: dist
 
+      - name: Download macOS artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ghost-macos
+          path: dist
+
+      - name: Generate SHA256 checksums
+        run: |
+          cd dist
+          sha256sum * > SHA256SUMS.txt
+
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            dist/Ghost.exe
-            dist/Ghost.exe.sha256
+            dist/GhostSetup-*.exe
+            dist/Ghost-*.dmg
+            dist/GhostInstaller-*.pkg
+            dist/SHA256SUMS.txt
           generate_release_notes: true
           draft: false
+          body: |
+            ## 📦 Downloads
+
+            | Platform | File | Size |
+            |----------|------|------|
+            | 🪟 Windows 10/11 | `GhostSetup-*.exe` | installer without admin |
+            | 🍏 macOS 11+     | `Ghost-*.dmg`      | installer pkg + uninstaller |
+
+            Verifique a integridade com `SHA256SUMS.txt`.
+
+            ## ⚖️ Licença
+
+            Ghost é distribuído sob **NCSAL v1.0** (source-available, **uso não-comercial**).
+            Para uso comercial, contate `contato.jesusoliveira@gmail.com`.
+
+            ---
+
+            Desenvolvido por **Jesus Oliveira** ·
+            [LinkedIn](https://www.linkedin.com/in/ojesus) ·
+            [GitHub](https://github.com/userJesus)

@@ -1,146 +1,211 @@
-# 👻 Ghost
+# Ghost
 
-> Assistente de IA desktop que **desaparece em screen share**. Feito para quem precisa pensar em voz alta sem revelar o que está na tela.
+> Desktop AI assistant for **Windows** and **macOS** — always-on-top, invisible to screen-share, reads your screen, transcribes meetings, and answers via OpenAI.
 
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue.svg)](https://www.python.org/downloads/)
-[![Platform: Windows](https://img.shields.io/badge/platform-Windows%2010%2F11-lightgrey.svg)](#)
-[![Build](https://img.shields.io/badge/build-passing-brightgreen.svg)](#)
+<p align="center">
+  <img src="assets/icon_256.png" width="128" alt="Ghost"/>
+</p>
 
-## ✨ O que é
-
-Ghost é um assistente de IA flutuante para desktop que resolve um problema específico: **conversar com uma IA sem que a janela apareça quando você compartilha a tela**.
-
-Usando a flag `WDA_EXCLUDEFROMCAPTURE` do Windows, a janela do Ghost é filtrada no nível do sistema antes de qualquer software de captura (Zoom, Teams, Meet, OBS, Discord) ver o frame. Para você, está lá. Para quem está do outro lado da chamada, simplesmente não existe.
-
-Por baixo: `pywebview` + Python + Alpine.js na UI, OpenAI API no cérebro, Whisper para transcrição e Fluent Design no visual.
-
-## 🎯 Features
-
-- **Chat com IA** — conversas com modelos OpenAI, streaming de respostas em tempo real
-- **Captura de tela** — tela inteira ou seleção de região arrastando o mouse
-- **Transcrição de áudio** — microfone + áudio do sistema via Whisper (útil em reuniões)
-- **Gravação de reuniões** — captura contínua com transcrição automática
-- **TTS** — respostas faladas em voz natural
-- **Histórico local** — todas as conversas salvas no disco, sem cloud
-- **Drag-and-drop** — arraste imagens ou arquivos direto na janela
-- **Detecção de info sensível** — avisa antes de enviar conteúdo que parece ser credencial
-- **Modo compacto** — reduz a janela a uma barra fina quando não está em uso
-- **Fluent Design** — acrílico, Mica e animações nativas do Windows 11
-- **Invisível em screen share** — o diferencial que motiva o projeto
-
-## 📸 Screenshots
-
-![Ghost](docs/screenshots/main.png)
-
-> As capturas de interface completas e o guia visual de usabilidade estão em [`docs/ghost-usabilidade.pdf`](docs/ghost-usabilidade.pdf).
-
-## 🚀 Começando
-
-### Pré-requisitos
-
-- Python 3.12 ou superior
-- Windows 10 versão 2004 (build 19041) ou superior — a flag de exclusão de captura depende disso
-- Uma chave de API da OpenAI
-
-### Instalação
-
-```bash
-git clone https://github.com/jesusoliveira/ghost.git
-cd ghost
-
-python -m venv .venv
-.venv\Scripts\activate
-
-pip install -r requirements.txt
-
-copy .env.example .env
-# edite .env e coloque sua OPENAI_API_KEY
-
-python main.py
-```
-
-Para rodar sem console (janela silenciosa), use `pythonw main.py` ou dê duplo clique em `run.bat`.
-
-## ⌨️ Atalhos
-
-| Atalho | Contexto | Ação |
-|---|---|---|
-| `Ctrl+Shift+G` | Global | Mostrar/ocultar a janela do Ghost |
-| `Enter` | Chat | Enviar mensagem |
-| `Shift+Enter` | Chat | Nova linha sem enviar |
-| `Ctrl+C` | Chat | Interromper resposta em streaming |
-| `Ctrl+Shift+S` | Global | Capturar tela inteira |
-| `Ctrl+Shift+A` | Global | Selecionar região da tela |
-| `Ctrl+Shift+R` | Global | Iniciar/parar gravação de reunião |
-| `Esc` | Seletor de área | Cancelar seleção |
-
-## 🔧 Troubleshooting
-
-**SmartScreen bloqueou a execução:** como o binário ainda não é assinado, o Windows SmartScreen pode avisar na primeira vez. Clique em **Mais informações** → **Executar assim mesmo**.
-
-**A janela aparece no screen share mesmo assim:** verifique se seu Windows é build 19041 ou superior (`winver` no terminal). Versões anteriores não suportam `WDA_EXCLUDEFROMCAPTURE`.
-
-**Áudio do sistema não é capturado:** confirme que nenhum outro app está com acesso exclusivo ao dispositivo e que o driver suporta loopback (a maioria suporta via WASAPI).
-
-**Gatekeeper (macOS):** ainda não aplicável. A versão Mac está planejada para v0.2 e virá com instruções específicas de primeira execução.
-
-**A chave da OpenAI não é aceita:** confira se não há espaços no `.env` e se a chave tem créditos ativos na conta.
-
-## 🛠 Desenvolvimento
-
-### Setup do ambiente
-
-```bash
-git clone https://github.com/jesusoliveira/ghost.git
-cd ghost
-python -m venv .venv
-.venv\Scripts\activate
-pip install -r requirements.txt
-pip install -r requirements-dev.txt
-```
-
-### Rodar testes
-
-```bash
-pytest
-```
-
-### Lint e typecheck
-
-```bash
-ruff check .
-mypy .
-```
-
-### Padrões de código
-
-- Tipagem estática em todas as funções públicas (validada com `mypy --strict`)
-- Docstrings no estilo Google em módulos, classes e funções públicas
-- Formatação e lint via `ruff` (configurado em `pyproject.toml`)
-- Imports organizados automaticamente pelo `ruff`
-- Nomes de variáveis e funções em inglês; mensagens de UI e comentários em português
-
-Antes de abrir um PR, rode `pytest && ruff check . && mypy .` e garanta que tudo passa.
-
-## 🗺 Roadmap
-
-- **v0.2 — Mac port**: adaptação para macOS usando a API `sharingType` do `NSWindow` para o equivalente ao screen-share invisível
-- **v0.3 — i18n**: suporte a múltiplos idiomas na UI (en, pt-BR, es) com detecção automática
-- **v1.0 — Distribuição**: auto-update via Squirrel, code signing do binário Windows, instalador MSI e notarização no macOS
-
-## 🤝 Contribuindo
-
-Pull requests são muito bem-vindos. Leia o [CONTRIBUTING.md](CONTRIBUTING.md) antes de começar — ele explica o fluxo de fork, o padrão de commits e o processo de review.
-
-Se você encontrou um bug ou tem uma ideia, abra uma [issue](https://github.com/jesusoliveira/ghost/issues).
-
-Todos os participantes do projeto seguem o [Código de Conduta](CODE_OF_CONDUCT.md).
-
-## 📄 Licença
-
-Distribuído sob a licença MIT. Veja [`LICENSE`](LICENSE) para o texto completo.
+<p align="center">
+  <a href="#-instalação"><img alt="Windows" src="https://img.shields.io/badge/Windows-10%2F11-0078D4?logo=windows11&logoColor=white"/></a>
+  <a href="#-instalação"><img alt="macOS" src="https://img.shields.io/badge/macOS-11%2B-000000?logo=apple&logoColor=white"/></a>
+  <a href="#-licença"><img alt="License" src="https://img.shields.io/badge/license-NCSAL%20v1.0-important"/></a>
+  <a href="https://github.com/userJesus/ghost/releases"><img alt="Releases" src="https://img.shields.io/github/v/release/userJesus/ghost?include_prereleases&label=release"/></a>
+</p>
 
 ---
 
-Feito com ☕ por [Jesus Oliveira](https://github.com/jesusoliveira).
+## ✨ Features
+
+- **Answer questions** from the screen (press `Ctrl+Shift+G` / `⌘+Shift+G`).
+- **Screen capture** (full, window, area) + vision models to "see" what you're doing.
+- **Meeting transcription** with a virtual audio driver (BlackHole on macOS, Stereo Mix on Windows).
+- **Conversation branches** that AI-summarise the context before forking.
+- **Dynamic, AI-generated chat titles**.
+- **Invisible to screen-share** (`WDA_EXCLUDEFROMCAPTURE`) — safe during Zoom/Teams/Meet demos.
+- **Compact bar** and **docked-to-edge** modes for minimal footprint.
+- **Voice input** (push-to-talk).
+- **Auto-updates**: checks GitHub Releases and shows a banner when a new version is available.
+- **100% local data**: logs, settings, history, and your OpenAI key stay in `~/.ghost` — nothing leaves your machine except prompts to OpenAI.
+
+---
+
+## 📦 Instalação
+
+### Windows (10 / 11)
+
+1. Baixe o instalador da [página de releases](https://github.com/userJesus/ghost/releases/latest):
+   `GhostSetup-<versão>.exe`
+2. Execute o instalador. Ele instala em `%LocalAppData%\Programs\Ghost` (sem precisar de admin).
+3. Opções durante a instalação: atalho na área de trabalho, iniciar com o Windows.
+4. Abra o Ghost pelo menu Iniciar. Na primeira execução ele pede sua chave da OpenAI.
+
+### macOS (11+)
+
+1. Baixe `Ghost-<versão>.dmg` da [página de releases](https://github.com/userJesus/ghost/releases/latest).
+2. Abra o DMG e execute **Ghost Installer.pkg**.
+3. O instalador pergunta se deseja incluir o driver **BlackHole 2ch** — marque se pretende usar o modo de reuniões. Ele captura o áudio dos apps de reunião (Zoom/Teams/Meet).
+4. Conceda, quando solicitado, as permissões de **Microfone** e **Gravação de tela** em **Preferências do Sistema → Privacidade e Segurança**.
+5. Abra o Ghost pelo Launchpad.
+
+### Desinstalação e seus dados
+
+| SO      | Como desinstalar                                | Onde ficam seus dados   |
+|---------|-------------------------------------------------|-------------------------|
+| Windows | **Configurações → Apps** → Ghost → Desinstalar  | `%USERPROFILE%\.ghost`  |
+| macOS   | Abra o DMG → execute `uninstall_mac.sh`          | `~/.ghost`              |
+
+Em ambos os casos, o desinstalador **pergunta** se você quer **apagar os dados** (logs, configurações, histórico, chave da OpenAI) ou **mantê-los**. Se você reinstalar depois mantendo os dados, o histórico volta automaticamente.
+
+---
+
+## 🚀 Uso rápido
+
+| Atalho           | Ação                                               |
+|------------------|----------------------------------------------------|
+| `Ctrl+Shift+G`   | Abre/foca o Ghost                                  |
+| `→` (no app)     | "Encolher para o canto" (modo docked, 56×56 px)    |
+| Clique no docked | Restaura o app                                     |
+
+---
+
+## 🔄 Atualizações automáticas
+
+Toda vez que você abrir o Ghost, ele consulta a API de **releases do GitHub** e compara com sua versão instalada. Se houver uma nova, aparece um banner com o botão **Baixar** que abre a página de release no navegador. Não há download/instalação silenciosa — você tem controle total.
+
+---
+
+## ⚖️ Licença
+
+Ghost é distribuído sob a **Non-Commercial Source-Available License (NCSAL) v1.0**.
+
+### Em resumo
+
+| Permitido ✅                                           | Proibido sem licença comercial ❌                         |
+|--------------------------------------------------------|----------------------------------------------------------|
+| Uso pessoal, educacional, de pesquisa                  | Venda, SaaS, consultoria paga usando o Ghost             |
+| Estudar, modificar e contribuir com o código           | Incorporar em produtos pagos                             |
+| Redistribuir sem cobrar (mantendo a licença)           | Monetização por anúncio, assinatura, paywall             |
+| Fazer forks para fins não-comerciais                   | Relicenciar sob termos mais permissivos                  |
+
+### Fundamento legal (Brasil)
+
+A licença é respaldada pelos seguintes diplomas legais:
+
+- **Lei nº 9.609/98** (Lei do Software) — Arts. 1º, 2º, 9º, 12
+- **Lei nº 9.610/98** (Lei de Direitos Autorais) — Arts. 7º-XII, 28, 29, 46
+- **Código Penal, Art. 184** — violação de direitos autorais com fim de lucro: reclusão de 2 a 4 anos + multa
+
+Leia o texto integral em [LICENSE](LICENSE).
+
+### Licenciamento comercial
+
+Para uso comercial, contate o autor:
+
+- **Jesus Oliveira** — `contato.jesusoliveira@gmail.com`
+- **LinkedIn** → [linkedin.com/in/ojesus](https://www.linkedin.com/in/ojesus)
+- **GitHub** → [github.com/userJesus](https://github.com/userJesus)
+
+---
+
+## 🛠️ Build a partir do código-fonte
+
+Pré-requisitos: Python 3.12+, `git`.
+
+### Preparar
+
+```bash
+git clone https://github.com/userJesus/ghost.git
+cd ghost
+python -m venv .venv
+# Windows:
+.venv\Scripts\activate
+# macOS:
+source .venv/bin/activate
+pip install -r dev-requirements.txt
+```
+
+### Rodar em modo desenvolvimento
+
+```bash
+python main.py
+```
+
+### Build do instalador
+
+**Windows** (requer [Inno Setup 6](https://jrsoftware.org/isdl.php)):
+
+```bat
+scripts\build_windows.bat
+REM saída: installer\windows\Output\GhostSetup-<versão>.exe
+```
+
+**macOS** (requer Xcode CLT + `iconutil` nativo):
+
+```bash
+bash scripts/build_mac.sh
+# saída: installer/macos/Output/Ghost-<versão>.dmg
+```
+
+Ambos os pipelines:
+1. Geram o ícone (`scripts/make_icons.py`) a partir de `assets/icon_ghost.svg`.
+2. Empacotam o app (`pyinstaller` ou `py2app`).
+3. Produzem o instalador nativo (`.exe` / `.pkg` + `.dmg`).
+
+A versão é lida de [`src/version.py`](src/version.py) — única fonte de verdade.
+
+---
+
+## 🗂️ Estrutura
+
+```
+ghost/
+├── main.py                     # entry-point
+├── src/
+│   ├── version.py              # versão + metadados do autor
+│   ├── api.py                  # ponte JS ↔ Python (webview)
+│   ├── updater.py              # checagem de atualizações no GitHub
+│   ├── gpt_client.py, history.py, ...
+├── web/                        # Alpine.js + HTML/CSS
+├── assets/
+│   ├── icon_ghost.svg          # fonte
+│   ├── icon.ico                # Windows
+│   └── icon.iconset/           # macOS (→ icon.icns)
+├── installer/
+│   ├── windows/
+│   │   └── ghost.iss           # Inno Setup
+│   └── macos/
+│       ├── build_pkg.sh
+│       ├── distribution.xml    # productbuild
+│       └── Resources/          # welcome/conclusion/license
+├── scripts/
+│   ├── make_icons.py
+│   ├── build_windows.bat
+│   ├── build_mac.sh
+│   └── uninstall_mac.sh
+├── tests/
+├── pyproject.toml
+├── ghost.spec                  # PyInstaller
+├── setup_mac.py                # py2app
+└── LICENSE                     # NCSAL v1.0
+```
+
+---
+
+## 🤝 Contribuindo
+
+Pull requests são bem-vindas, contanto que respeitem a licença non-commercial.
+Veja [CONTRIBUTING.md](CONTRIBUTING.md) e [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
+
+---
+
+## 👤 Autor
+
+**Jesus Oliveira**
+- LinkedIn → [linkedin.com/in/ojesus](https://www.linkedin.com/in/ojesus)
+- GitHub → [github.com/userJesus](https://github.com/userJesus)
+- E-mail → `contato.jesusoliveira@gmail.com`
+
+---
+
+<sub>Copyright © 2026 Jesus Oliveira. Source-available under NCSAL v1.0. Proibido o uso comercial sem licença separada. Ver [LICENSE](LICENSE) para detalhes.</sub>

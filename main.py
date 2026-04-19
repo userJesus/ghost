@@ -18,10 +18,20 @@ from src.win_focus import (
     show_window,
 )
 
-ROOT = Path(__file__).resolve().parent
+# User-data folder — same across platforms, matches history.py/logging_config.py/config.py.
+# Windows resolves ~ to %USERPROFILE% (e.g. C:\Users\<user>\.ghost).
+USER_DATA = Path.home() / ".ghost"
+
+if getattr(sys, "frozen", False):
+    # PyInstaller: bundled resources live in _MEIPASS (onefile) or exe dir (onedir).
+    ROOT = Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent))
+    USER_DATA.mkdir(parents=True, exist_ok=True)
+    LOG_FILE = USER_DATA / "ghost.log"
+else:
+    ROOT = Path(__file__).resolve().parent
+    LOG_FILE = ROOT / "ghost.log"
 WEB_INDEX = ROOT / "web" / "index.html"
 WEB_RESPONSE = ROOT / "web" / "response.html"
-LOG_FILE = ROOT / "ghost.log"
 
 
 def _find_own_top_window() -> int:
@@ -197,8 +207,8 @@ def main():
         "Ghost Response",
         str(WEB_RESPONSE),
         js_api=api,
-        width=420,
-        height=540,
+        width=540,
+        height=600,
         x=-10000,
         y=-10000,
         frameless=True,

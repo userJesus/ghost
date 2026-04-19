@@ -4,13 +4,17 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ghost"
-version = "0.1.0"
-description = "Ghost — a Windows desktop AI assistant built with pywebview, Python, Alpine.js and OpenAI."
+version = "1.0.0"
+description = "Ghost — a cross-platform (Windows + macOS) desktop AI assistant built with pywebview, Python, Alpine.js and OpenAI. Non-commercial use only."
 readme = "README.md"
 requires-python = ">=3.12"
-license = "MIT"
+# Custom non-commercial source-available license (see LICENSE file).
+license = { file = "LICENSE" }
 authors = [
-    { name = "Jesus Oliveira", email = "nicola.om@gmail.com" },
+    { name = "Jesus Oliveira", email = "contato.jesusoliveira@gmail.com" },
+]
+maintainers = [
+    { name = "Jesus Oliveira", email = "contato.jesusoliveira@gmail.com" },
 ]
 keywords = [
     "ai",
@@ -19,14 +23,18 @@ keywords = [
     "pywebview",
     "desktop",
     "windows",
+    "macos",
     "alpine",
+    "non-commercial",
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Environment :: Win32 (MS Windows)",
+    "Environment :: MacOS X",
     "Intended Audience :: End Users/Desktop",
-    "License :: OSI Approved :: MIT License",
+    "License :: Other/Proprietary License",
     "Operating System :: Microsoft :: Windows",
+    "Operating System :: MacOS :: MacOS X",
     "Programming Language :: Python :: 3.12",
     "Topic :: Office/Business",
     "Topic :: Utilities",
@@ -60,10 +68,12 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/jesusoliveira/ghost"
-Repository = "https://github.com/jesusoliveira/ghost"
-Issues = "https://github.com/jesusoliveira/ghost/issues"
-Changelog = "https://github.com/jesusoliveira/ghost/releases"
+Homepage = "https://github.com/userJesus/ghost"
+Repository = "https://github.com/userJesus/ghost"
+Issues = "https://github.com/userJesus/ghost/issues"
+Changelog = "https://github.com/userJesus/ghost/releases"
+Author_LinkedIn = "https://www.linkedin.com/in/ojesus"
+Author_GitHub = "https://github.com/userJesus"
 
 [project.scripts]
 ghost = "main:main"

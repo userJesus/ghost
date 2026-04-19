@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Ghost — macOS installer distribution definition (productbuild)
+
+  This `productbuild` distribution bundles two component packages into a
+  single-file installer:
+
+    1. Ghost.pkg         — the app bundle (built by pkgbuild)
+    2. BlackHole2ch.pkg  — virtual audio driver required to capture system
+                           audio during meetings (Zoom/Teams/Meet/etc.).
+                           Downloaded on build from the official release
+                           (https://github.com/ExistentialAudio/BlackHole).
+                           Users can opt out of the driver step.
+
+  Compile: productbuild --distribution distribution.xml \
+                        --package-path <dir-with-pkgs> \
+                        --resources Resources \
+                        GhostInstaller-<version>.pkg
+-->
+<installer-gui-script minSpecVersion="2">
+    <title>Ghost</title>
+    <organization>io.github.userjesus</organization>
+    <domains enable_localSystem="true" enable_currentUserHome="true"/>
+    <options customize="allow" require-scripts="false" hostArchitectures="arm64,x86_64"/>
+
+    <!-- Sidebar/background (optional; put files under Resources/). -->
+    <welcome    file="welcome.html"    mime-type="text/html"/>
+    <license    file="license.txt"     mime-type="text/plain"/>
+    <conclusion file="conclusion.html" mime-type="text/html"/>
+
+    <!-- Choices visible to the user on the "Customize" step. -->
+    <choices-outline>
+        <line choice="default">
+            <line choice="ghost.app"/>
+            <line choice="ghost.driver.blackhole"/>
+        </line>
+    </choices-outline>
+
+    <choice id="default"/>
+
+    <choice id="ghost.app"
+            title="Ghost.app"
+            description="O aplicativo Ghost (obrigatório). Será instalado em /Applications."
+            start_enabled="false"
+            start_selected="true">
+        <pkg-ref id="io.github.userjesus.ghost"/>
+    </choice>
+
+    <choice id="ghost.driver.blackhole"
+            title="BlackHole 2ch (driver de áudio)"
+            description="Driver virtual de áudio recomendado para capturar o som de reuniões (Zoom, Teams, Meet, etc.). Você pode desmarcar se já o possui ou não usa o recurso de reuniões.">
+        <pkg-ref id="audio.existential.BlackHole2ch"/>
+    </choice>
+
+    <!-- Component package references. These files must exist in --package-path. -->
+    <pkg-ref id="io.github.userjesus.ghost"
+             version="1.0.0"
+             auth="Root"
+             onConclusion="none">Ghost.pkg</pkg-ref>
+
+    <pkg-ref id="audio.existential.BlackHole2ch"
+             version="0"
+             auth="Root"
+             onConclusion="none">BlackHole2ch.pkg</pkg-ref>
+</installer-gui-script>

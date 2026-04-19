@@ -6,7 +6,7 @@ Antes de qualquer coisa, leia o [Código de Conduta](CODE_OF_CONDUCT.md). Partic
 
 ## Reportando bugs
 
-Abra uma issue em [github.com/jesusoliveira/ghost/issues](https://github.com/jesusoliveira/ghost/issues) com o rótulo `bug`. Inclua:
+Abra uma issue em [github.com/userJesus/ghost/issues](https://github.com/userJesus/ghost/issues) com o rótulo `bug`. Inclua:
 
 - Descrição curta do que aconteceu
 - Passos para reproduzir (numerados, o mais objetivos possível)
@@ -116,4 +116,4 @@ Toda feature nova precisa de teste. Todo bug fix precisa de um teste de regress�
 
 PRs pequenos e focados são aprovados mais rápido. Se você está mexendo em várias coisas, é melhor abrir PRs separados.
 
-Dúvidas? Abra uma issue com o rótulo `question` ou entre em contato: nicola.om@gmail.com.
+Dúvidas? Abra uma issue com o rótulo `question` ou entre em contato: contato.jesusoliveira@gmail.com.
