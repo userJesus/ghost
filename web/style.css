@@ -184,7 +184,13 @@ input, textarea, button, select {
     border-bottom-color: var(--accent);
 }
 .app.compact .chip-flyout {
-    max-height: 200px;
+    /* Fixed width so it doesn't inherit the chip's stretched flex:1 width
+       (which would make the dropdown span ~400px). 240px fits the option
+       labels comfortably and visually matches the narrower trigger button. */
+    min-width: 240px;
+    width: 240px;
+    max-width: 240px;
+    max-height: calc(100vh - 70px);
 }
 .app.compact .composer-pill {
     max-width: 100%;
@@ -307,7 +313,10 @@ input, textarea, button, select {
     text-overflow: ellipsis;
 }
 .compact-drag:active { cursor: grabbing; }
-.compact-drag svg { display: none; }
+/* Legacy rule hid any SVG inside the drag area. The brand logo IS an SVG —
+   whitelist it so the wordmark renders; other svgs (if any appear later)
+   remain hidden by default. */
+.compact-drag svg:not(.brand-logo-compact):not(.brand-logo) { display: none; }
 
 .compact-btn {
     width: 36px;
@@ -1327,11 +1336,9 @@ input, textarea, button, select {
    bottom: calc(100% + 6px)) — cabe inteiro no espaço acima porque os
    chips ficam no final da barra. max-height clampa à viewport. */
 .app.compact > .composer {
+    /* Chips go to the BOTTOM of the compact bar (next to the input).
+       The default upward-opening flyout has room above to render fully. */
     flex-direction: column-reverse;
-}
-.app.compact .chip-flyout {
-    /* Mantém 'bottom: calc(100% + 6px)' do base — abre pra cima. */
-    max-height: calc(100vh - 80px);
 }
 .chip-flyout-label {
     font-size: 10.5px;
