@@ -118,7 +118,8 @@ if [ -z "${BLACKHOLE_CACHE}" ] || [ ! -s "${BLACKHOLE_CACHE}" ]; then
     cp "${BUILD}/Ghost.pkg" "${OUT_PKG}"
     echo "           (BlackHole missing — shipped Ghost-only pkg)"
 else
-    cp "${BLACKHOLE_CACHE}" "${BUILD}/BlackHole2ch.pkg"
+    # BlackHole is already at ${BUILD}/BlackHole2ch.pkg (that's where the curl
+    # downloaded it); no need to copy. productbuild will find it via --package-path.
     productbuild \
         --distribution "${HERE}/distribution.xml" \
         --package-path "${BUILD}" \
