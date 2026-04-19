@@ -1,0 +1,49 @@
+#!/bin/bash
+# ============================================================
+#  Ghost — postinstall script
+#
+#  Runs as root AFTER Ghost.app has been copied to /Applications.
+#  Installs the BlackHole 2ch virtual audio driver so the meeting
+#  capture feature works out of the box.
+#
+#  $0                           — this script (path on disk)
+#  $1                           — the pkg being installed
+#  $2                           — install destination (usually /)
+#  $3                           — target volume mountpoint
+#  $(dirname "$0")              — temp dir with this script + resources
+#
+#  The sibling file `BlackHole2ch.pkg` is bundled alongside this script
+#  inside the Ghost.pkg's Scripts archive (set up by pkgbuild --scripts).
+# ============================================================
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+BH_PKG="${SCRIPT_DIR}/BlackHole2ch.pkg"
+LOG="/tmp/ghost-install.log"
+
+exec >>"${LOG}" 2>&1
+echo "--- $(date) — Ghost postinstall ---"
+echo "SCRIPT_DIR=${SCRIPT_DIR}"
+echo "BH_PKG=${BH_PKG}"
+echo "Target volume=$3"
+
+if [ -f "${BH_PKG}" ]; then
+    echo "Installing BlackHole 2ch..."
+    # -target / installs to the root volume. Runs as root because our
+    # parent pkg installer is already elevated.
+    if /usr/sbin/installer -pkg "${BH_PKG}" -target / ; then
+        echo "BlackHole 2ch installed successfully."
+    else
+        ec=$?
+        echo "BlackHole install returned non-zero (${ec}) — non-fatal; Ghost itself is installed."
+    fi
+else
+    echo "BlackHole2ch.pkg not bundled with this installer — skipping driver install."
+fi
+
+# Best-effort: kick coreaudio so the new device appears immediately.
+/bin/launchctl kickstart -k "system/com.apple.audio.coreaudiod" 2>/dev/null || true
+
+echo "--- postinstall done ---"
+exit 0

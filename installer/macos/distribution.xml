@@ -2,51 +2,33 @@
 <!--
   Ghost — macOS installer distribution (productbuild).
 
-  Bundles two component packages:
-    Ghost.pkg         (the app, built locally by pkgbuild)
-    BlackHole2ch.pkg  (virtual audio driver for meeting capture, downloaded
-                        from the ExistentialAudio official release).
-
-  Invoked by installer/macos/build_pkg.sh via:
-    productbuild (distribution: distribution.xml,
-                  package-path : build-dir with the two pkgs,
-                  resources    : Resources/,
-                  output       : GhostInstaller-VERSION.pkg)
+  Single-component distribution: Ghost.pkg is the one and only payload.
+  BlackHole 2ch is installed AUTOMATICALLY by Ghost.pkg's postinstall
+  script (see installer/macos/scripts/postinstall). Running BlackHole
+  inline after Ghost.app is copied avoids the "payload could not be
+  loaded" bug we hit when productbuild tried to combine two signed pkgs.
 -->
 <installer-gui-script minSpecVersion="1">
     <title>Ghost</title>
     <organization>io.github.userjesus</organization>
-    <options customize="allow" require-scripts="false" hostArchitectures="arm64,x86_64"/>
+    <options customize="never" require-scripts="false" hostArchitectures="arm64,x86_64"/>
 
     <welcome    file="welcome.html"    mime-type="text/html"/>
     <license    file="license.txt"     mime-type="text/plain"/>
     <conclusion file="conclusion.html" mime-type="text/html"/>
 
-    <!-- Flat choices list (no nested "default" wrapper — some installer versions
-         fail to resolve payload paths when a choice-of-choices exists). -->
     <choices-outline>
         <line choice="ghost.app"/>
-        <line choice="ghost.driver.blackhole"/>
     </choices-outline>
 
     <choice id="ghost.app"
-            visible="true"
-            title="Ghost.app"
-            description="O aplicativo Ghost (obrigatorio). Sera instalado em /Applications."
+            visible="false"
+            title="Ghost"
+            description="Ghost + driver de audio BlackHole 2ch (para captura de reunioes)."
             start_enabled="false"
             start_selected="true">
         <pkg-ref id="io.github.userjesus.ghost"/>
     </choice>
 
-    <choice id="ghost.driver.blackhole"
-            visible="true"
-            title="BlackHole 2ch (driver de audio)"
-            description="Driver virtual de audio recomendado para capturar o som de reunioes (Zoom, Teams, Meet). Desmarque se ja o possui ou nao vai usar o modo de reunioes."
-            start_selected="true">
-        <pkg-ref id="audio.existential.BlackHole2ch"/>
-    </choice>
-
-    <!-- Component package references (productbuild resolves filenames via package-path). -->
     <pkg-ref id="io.github.userjesus.ghost">Ghost.pkg</pkg-ref>
-    <pkg-ref id="audio.existential.BlackHole2ch">BlackHole2ch.pkg</pkg-ref>
 </installer-gui-script>

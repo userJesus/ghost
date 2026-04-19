@@ -83,33 +83,12 @@ codesign --deep --force --sign "${SIGN_ID}" --timestamp --options runtime \
 ENT
 
 # ---------------------------------------------------------------
-# 4. pkgbuild — wrap the app in a component pkg
-#
-# Using `--component <path-to-.app>` is the simplest + most reliable form:
-# pkgbuild figures out the bundle identifier, payload path, and install
-# rules automatically. The previous `--root + --component-plist` combo
-# produced a pkg whose payload couldn't be found at install time
-# ("Software que deve ser instalado não foi encontrado").
+# 4. Fetch BlackHole 2ch driver pkg (fetched BEFORE pkgbuild so we can embed
+#    it alongside the postinstall script).
 # ---------------------------------------------------------------
-echo "[mac-build] 4/7  wrapping Ghost.app into component pkg..."
-pkgbuild \
-    --component "${APP_BUNDLE}" \
-    --identifier "io.github.userjesus.ghost" \
-    --version "${VERSION}" \
-    --install-location "/Applications" \
-    "${BUILD}/Ghost.pkg"
-
-# Sanity-check: inspect the generated pkg and confirm payload is present.
-pkgutil --payload-files "${BUILD}/Ghost.pkg" | head -5 || true
-echo "[mac-build]     Ghost.pkg size: $(du -h "${BUILD}/Ghost.pkg" | cut -f1)"
-
-# ---------------------------------------------------------------
-# 5. Fetch BlackHole 2ch driver pkg
-# ---------------------------------------------------------------
-echo "[mac-build] 5/7  fetching BlackHole 2ch driver..."
+echo "[mac-build] 4/7  fetching BlackHole 2ch driver..."
 BLACKHOLE_CACHE="${BUILD}/BlackHole2ch.pkg"
 if [ ! -s "${BLACKHOLE_CACHE}" ]; then
-    # Try to resolve the latest release URL from GitHub; fall back to a pinned mirror.
     BH_URL="$(curl -fsS https://api.github.com/repos/ExistentialAudio/BlackHole/releases/latest 2>/dev/null \
         | grep -o 'https://[^"]*BlackHole2ch[^"]*\.pkg' | head -1 || true)"
     if [ -z "${BH_URL}" ]; then
@@ -123,30 +102,56 @@ if [ ! -s "${BLACKHOLE_CACHE}" ]; then
 fi
 
 # ---------------------------------------------------------------
-# 6. productbuild — combine into distribution pkg
+# 5. pkgbuild — Ghost.pkg with postinstall that installs BlackHole
+#
+# Instead of productbuild's multi-choice distribution (which had the "software
+# not found" payload-resolution bug on some macOS versions), we embed the
+# BlackHole pkg as a SCRIPTS-ARCHIVE RESOURCE alongside a postinstall script.
+# Postinstall runs AFTER Ghost.app is copied to /Applications and invokes
+# `installer -pkg BlackHole2ch.pkg -target /` to bring the driver in.
 # ---------------------------------------------------------------
-echo "[mac-build] 6/7  combining into single installer..."
+echo "[mac-build] 5/7  building Ghost.pkg with BlackHole postinstall..."
+
+# Prepare a scripts directory pkgbuild will archive.
+SCRIPTS_DIR="${BUILD}/scripts"
+rm -rf "${SCRIPTS_DIR}"
+mkdir -p "${SCRIPTS_DIR}"
+cp "${HERE}/scripts/postinstall" "${SCRIPTS_DIR}/postinstall"
+chmod +x "${SCRIPTS_DIR}/postinstall"
+if [ -n "${BLACKHOLE_CACHE}" ] && [ -s "${BLACKHOLE_CACHE}" ]; then
+    cp "${BLACKHOLE_CACHE}" "${SCRIPTS_DIR}/BlackHole2ch.pkg"
+    echo "           bundled BlackHole2ch.pkg alongside postinstall"
+else
+    echo "           (no BlackHole bundled — postinstall will skip driver install)"
+fi
+
+pkgbuild \
+    --component "${APP_BUNDLE}" \
+    --scripts "${SCRIPTS_DIR}" \
+    --identifier "io.github.userjesus.ghost" \
+    --version "${VERSION}" \
+    --install-location "/Applications" \
+    "${BUILD}/Ghost.pkg"
+
+echo "[mac-build]     Ghost.pkg size: $(du -h "${BUILD}/Ghost.pkg" | cut -f1)"
+
+# ---------------------------------------------------------------
+# 6. productbuild — wrap Ghost.pkg so the installer has the full wizard UX
+#    (welcome → license → customize → install → conclusion). Ghost.pkg is the
+#    only component; BlackHole is installed by its postinstall.
+# ---------------------------------------------------------------
+echo "[mac-build] 6/7  wrapping Ghost.pkg in distribution installer..."
 
 # Plain-text LICENSE excerpt for the license pane.
 sed -n '1,/=========/p' LICENSE | sed '$d' > "${HERE}/Resources/license.txt" || cp LICENSE "${HERE}/Resources/license.txt"
 
 OUT_PKG="${OUT}/GhostInstaller-${VERSION}.pkg"
-
-# If we failed to fetch BlackHole, fall back to a distribution without it.
-if [ -z "${BLACKHOLE_CACHE}" ] || [ ! -s "${BLACKHOLE_CACHE}" ]; then
-    # Standalone Ghost.pkg — rename + place.
-    cp "${BUILD}/Ghost.pkg" "${OUT_PKG}"
-    echo "           (BlackHole missing — shipped Ghost-only pkg)"
-else
-    # BlackHole is already at ${BUILD}/BlackHole2ch.pkg (that's where the curl
-    # downloaded it); no need to copy. productbuild will find it via --package-path.
-    productbuild \
-        --distribution "${HERE}/distribution.xml" \
-        --package-path "${BUILD}" \
-        --resources "${HERE}/Resources" \
-        --version "${VERSION}" \
-        "${OUT_PKG}"
-fi
+productbuild \
+    --distribution "${HERE}/distribution.xml" \
+    --package-path "${BUILD}" \
+    --resources "${HERE}/Resources" \
+    --version "${VERSION}" \
+    "${OUT_PKG}"
 
 echo
 echo "[mac-build] pkg: ${OUT_PKG} ($(du -h "${OUT_PKG}" | cut -f1))"
