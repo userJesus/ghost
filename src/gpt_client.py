@@ -1,4 +1,5 @@
 from openai import OpenAI
+
 from .config import get_openai_key, get_openai_model
 
 

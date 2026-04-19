@@ -1,0 +1,38 @@
+name: Feature request
+description: Sugira uma nova funcionalidade para o Ghost
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Obrigado por sugerir uma nova funcionalidade para o Ghost!
+
+        Antes de continuar, verifique se uma feature similar ja nao foi proposta em [issues existentes](../issues).
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Descricao do problema
+      description: Qual problema essa feature resolveria? Descreva a dor ou limitacao atual.
+      placeholder: Hoje eu nao consigo ... porque ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Solucao proposta
+      description: Descreva a solucao que voce gostaria de ver. Seja o mais concreto possivel.
+      placeholder: Gostaria que o Ghost fizesse ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternativas consideradas (opcional)
+      description: Voce considerou outras abordagens? Descreva-as e por que nao sao suficientes.
+      placeholder: Considerei fazer ... mas ...
+    validations:
+      required: false

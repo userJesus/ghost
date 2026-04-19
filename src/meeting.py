@@ -1,21 +1,18 @@
-import os
 import subprocess
-import time
-import threading
 import tempfile
+import threading
+import time
 from pathlib import Path
-from datetime import datetime
 
+import imageio.v2 as imageio
+import imageio_ffmpeg
 import numpy as np
 import soundcard as sc
 import soundfile as sf
-import imageio.v2 as imageio
-import imageio_ffmpeg
+from PIL import Image
 
 from .capture import capture_fullscreen, capture_region
 from .scroll_capture import capture_monitor
-from PIL import Image
-
 
 SAMPLE_RATE = 16000  # 16kHz mono = smaller files + enough for speech
 CHANNELS = 1

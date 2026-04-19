@@ -25,7 +25,9 @@ MAX_CONVERSATIONS = 100  # Mantém últimas 100 pra não crescer infinito
 
 
 def _now_iso() -> str:
-    return datetime.now().isoformat(timespec="seconds")
+    # Microsecond precision para evitar colisões quando várias saves acontecem
+    # no mesmo segundo (importante pro prune por updated_at).
+    return datetime.now().isoformat(timespec="microseconds")
 
 
 def _load() -> dict:

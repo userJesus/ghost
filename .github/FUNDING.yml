@@ -1,0 +1,7 @@
+# Configuracao de patrocinio do projeto Ghost.
+# Descomente e preencha as linhas abaixo quando o autor quiser habilitar patrocinio.
+# Documentacao: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/displaying-a-sponsor-button-in-your-repository
+
+# github: [jesusoliveira]
+# ko_fi: jesusoliveira
+# custom: ["https://example.com/donate"]

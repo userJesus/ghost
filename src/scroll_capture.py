@@ -1,4 +1,5 @@
 import time
+
 import mss
 import pyautogui
 from PIL import Image

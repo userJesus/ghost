@@ -10,9 +10,12 @@ import win32process
 
 from src.api import GhostAPI
 from src.win_focus import (
-    hide_from_capture, hide_from_taskbar,
-    show_window, hide_window, is_window_visible,
+    hide_from_capture,
+    hide_from_taskbar,
+    hide_window,
+    is_window_visible,
     make_non_activating,
+    show_window,
 )
 
 ROOT = Path(__file__).resolve().parent
@@ -60,8 +63,8 @@ def _apply_window_tweaks(api: GhostAPI, init_x: int = 100, init_y: int = 100,
             # Center the window on the primary monitor work area
             # WITHOUT changing its size (pywebview handles DPI scaling)
             try:
-                import win32gui
                 import win32api
+                import win32gui
                 # Read the window's actual size (DPI-scaled by pywebview)
                 rect = win32gui.GetWindowRect(hwnd)
                 cur_w = rect[2] - rect[0]

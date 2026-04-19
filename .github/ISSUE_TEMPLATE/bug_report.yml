@@ -1,0 +1,67 @@
+name: Bug report
+description: Reporte um bug no Ghost
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Obrigado por reportar um bug no Ghost!
+
+        Antes de continuar, verifique se este problema ja nao foi reportado em [issues existentes](../issues).
+        Preencha as secoes abaixo com o maximo de detalhes possivel para nos ajudar a reproduzir e corrigir o problema.
+
+  - type: input
+    id: ghost-version
+    attributes:
+      label: Versao do Ghost
+      description: "Qual versao do Ghost voce esta usando? (ex.: v0.1.0)"
+      placeholder: v0.1.0
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Sistema operacional
+      description: Em qual sistema operacional o bug ocorreu?
+      options:
+        - Windows 10
+        - Windows 11
+        - Outro
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Passos para reproduzir
+      description: Descreva os passos exatos para reproduzir o bug.
+      placeholder: |
+        1. Abra o Ghost
+        2. Clique em '...'
+        3. Digite '...'
+        4. Veja o erro
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected-vs-actual
+    attributes:
+      label: Comportamento esperado vs. atual
+      description: O que voce esperava que acontecesse e o que de fato aconteceu?
+      placeholder: |
+        **Esperado:** ...
+        **Atual:** ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs (opcional)
+      description: |
+        Cole aqui trechos relevantes dos logs. Voce pode encontrar os logs em `~/.ghost/ghost.log`.
+      render: shell
+    validations:
+      required: false

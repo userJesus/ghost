@@ -1,16 +1,15 @@
 """Transcribe + summarize + write meeting doc (no speaker diarization)."""
 import json
-import os
 import re
-from pathlib import Path
 from datetime import datetime
-from PIL import Image
+from pathlib import Path
 
 from openai import OpenAI
+from PIL import Image
 
-from .config import get_openai_key, get_openai_model
-from .meeting import MeetingRecorder, format_time
 from .capture import image_to_base64
+from .config import get_openai_key, get_openai_model
+from .meeting import format_time
 
 
 def _client() -> OpenAI:

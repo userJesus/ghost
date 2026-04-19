@@ -8,23 +8,24 @@ import traceback
 from datetime import datetime
 from pathlib import Path
 
-from .capture import capture_fullscreen, capture_region, image_to_base64, image_to_data_url
-from .gpt_client import chat_completion, build_user_message
-from .scroll_capture import list_monitors, scroll_and_capture, stitch_vertical, capture_monitor
-from .region_selector import select_region
-from .config import PRESETS
-from .win_focus import (
-    make_non_activating, make_activating,
-    get_foreground_hwnd, set_foreground, drag_window_loop,
-    hide_from_capture, hide_window, set_window_opacity,
-    force_foreground,
-)
-from .meeting import MeetingRecorder, format_time
-from .voice import VoiceRecorder
 from . import history as _history
+from .capture import capture_fullscreen, capture_region, image_to_base64, image_to_data_url
+from .config import PRESETS
+from .gpt_client import build_user_message, chat_completion
+from .meeting import MeetingRecorder, format_time
 from .meeting_processor import (
-    transcribe_chunks_verbose, summarize_meeting,
-    write_markdown_doc, meetings_dir, transcribe_audio_verbose,
+    meetings_dir,
+    summarize_meeting,
+    transcribe_audio_verbose,
+    transcribe_chunks_verbose,
+    write_markdown_doc,
+)
+from .scroll_capture import capture_monitor, list_monitors, scroll_and_capture, stitch_vertical
+from .voice import VoiceRecorder
+from .win_focus import (
+    drag_window_loop,
+    force_foreground,
+    hide_window,
 )
 
 MAX_HISTORY = 10
@@ -94,7 +95,7 @@ class GhostAPI:
     def get_settings(self) -> dict:
         """Return current settings (without exposing the full API key)."""
         try:
-            from .config import get_openai_key, get_openai_model, SUPPORTED_MODELS
+            from .config import SUPPORTED_MODELS, get_openai_key, get_openai_model
             key = get_openai_key()
             masked = ""
             if key:
@@ -114,7 +115,7 @@ class GhostAPI:
     def set_openai_model(self, model_id: str) -> dict:
         """Save user's model choice. Must be in SUPPORTED_MODEL_IDS."""
         try:
-            from .config import load_user_config, save_user_config, SUPPORTED_MODEL_IDS
+            from .config import SUPPORTED_MODEL_IDS, load_user_config, save_user_config
             mid = (model_id or "").strip()
             if mid not in SUPPORTED_MODEL_IDS:
                 return {"error": f"Modelo não suportado: {mid}"}
@@ -146,7 +147,7 @@ class GhostAPI:
                 return {"error": "Formato inválido — deve começar com 'sk-'"}
 
             # Block overwriting a configured key unless explicit
-            from .config import load_user_config, save_user_config, get_openai_key
+            from .config import get_openai_key, load_user_config, save_user_config
             current = get_openai_key()
             if current and not replace_existing and current != key:
                 return {
@@ -261,7 +262,9 @@ class GhostAPI:
         try:
             import base64
             import time
+
             from openai import OpenAI
+
             from .config import get_openai_key
 
             key = get_openai_key()
@@ -334,7 +337,6 @@ class GhostAPI:
         e window.ghostStreamDone(stream_id, full_text_or_error)."""
         try:
             from .config import get_openai_key, get_openai_model
-            from .gpt_client import SYSTEM_PROMPT
 
             key = get_openai_key()
             if not key:
@@ -355,6 +357,7 @@ class GhostAPI:
     def _stream_worker(self, stream_id: str, key: str, model: str, text: str):
         try:
             from openai import OpenAI
+
             from .gpt_client import SYSTEM_PROMPT
 
             # Adiciona contexto watch/meeting se relevante (mesma lógica do send_text)
@@ -474,22 +477,8 @@ class GhostAPI:
         """Detecta padrões de info sensível em texto (CPF/CNPJ/cartão/email/telefone).
         Retorna lista de tipos encontrados pra avisar usuário antes de enviar."""
         try:
-            import re
-            found = []
-            patterns = {
-                "CPF": r"\b\d{3}\.?\d{3}\.?\d{3}-?\d{2}\b",
-                "CNPJ": r"\b\d{2}\.?\d{3}\.?\d{3}/?\d{4}-?\d{2}\b",
-                "Cartão de crédito": r"\b(?:\d[ -]*?){13,16}\b",
-                "Email": r"\b[\w.+-]+@[\w-]+\.[\w.-]+\b",
-                "Telefone": r"\b\(?\d{2}\)?\s*9?\d{4}-?\d{4}\b",
-                "CEP": r"\b\d{5}-?\d{3}\b",
-            }
-            t = text or ""
-            for name, pat in patterns.items():
-                m = re.findall(pat, t)
-                if m:
-                    found.append({"type": name, "count": len(m), "sample": str(m[0])[:40]})
-            return {"ok": True, "sensitive": found}
+            from .sensitive import scan
+            return {"ok": True, "sensitive": scan(text)}
         except Exception as e:
             return {"error": _log_error("scan_sensitive", e)}
 
@@ -528,8 +517,9 @@ class GhostAPI:
             # PDF → tenta extrair texto com pypdf se disponível
             if lower.endswith(".pdf") or mime == "application/pdf":
                 try:
-                    import pypdf
                     import io
+
+                    import pypdf
                     reader = pypdf.PdfReader(io.BytesIO(raw))
                     pages = []
                     for i, page in enumerate(reader.pages[:30]):  # max 30 páginas
@@ -641,7 +631,7 @@ class GhostAPI:
             else:
                 import webbrowser
                 webbrowser.open(url)
-            print(f"[open_url] launched OK", flush=True)
+            print("[open_url] launched OK", flush=True)
             return {"ok": True}
         except Exception as e:
             print(f"[open_url] error: {e}", flush=True)
@@ -761,9 +751,9 @@ class GhostAPI:
         if not self._hwnd:
             return None
         try:
-            import win32gui
             import win32api
             import win32con
+            import win32gui
             rect = win32gui.GetWindowRect(self._hwnd)
             cx = (rect[0] + rect[2]) // 2
             cy = (rect[1] + rect[3]) // 2
@@ -1174,9 +1164,9 @@ class GhostAPI:
             work_right = monitor["left"] + monitor["width"]
             work_bottom = monitor["top"] + monitor["height"]
             try:
-                import win32gui
                 import win32api
                 import win32con
+                import win32gui
                 rect = win32gui.GetWindowRect(self._hwnd) if self._hwnd else None
                 if rect:
                     pt = ((rect[0] + rect[2]) // 2, (rect[1] + rect[3]) // 2)
@@ -1310,8 +1300,8 @@ class GhostAPI:
         doesn't render as a black rectangle under WDA_EXCLUDEFROMCAPTURE."""
         try:
             if self._response_hwnd:
-                import win32gui
                 import win32con
+                import win32gui
                 win32gui.ShowWindow(self._response_hwnd, win32con.SW_HIDE)
                 # Park off-screen to avoid DWM protecting any visible rect
                 SWP_NOSIZE = 0x0001
@@ -1518,7 +1508,6 @@ class GhostAPI:
             # Imagem anexada via drag-and-drop (prioridade sobre watch/meeting screenshot)
             if image_data_url and isinstance(image_data_url, str) and image_data_url.startswith("data:image"):
                 try:
-                    import base64 as _b64
                     # Extrai base64 puro do data URL
                     _, b64part = image_data_url.split(",", 1)
                     image_b64 = b64part

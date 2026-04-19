@@ -13,7 +13,6 @@ import numpy as np
 import soundcard as sc
 import soundfile as sf
 
-
 SAMPLE_RATE = 16000
 CHANNELS = 1
 BLOCK_SIZE = 1024

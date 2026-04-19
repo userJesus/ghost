@@ -1,10 +1,11 @@
 import ctypes
-from ctypes import wintypes
-import time
 import threading
-import win32gui
-import win32con
+import time
+from ctypes import wintypes
+
 import win32api
+import win32con
+import win32gui
 
 # --- SetWindowDisplayAffinity (Windows 10 2004+) ---
 WDA_NONE = 0
@@ -210,8 +211,9 @@ def force_foreground(hwnd: int) -> bool:
     if not hwnd:
         return False
     try:
-        import win32process
         import ctypes
+
+        import win32process
         fg_hwnd = win32gui.GetForegroundWindow()
         if fg_hwnd == hwnd:
             return True
