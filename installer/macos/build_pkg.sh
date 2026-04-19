@@ -55,21 +55,17 @@ APP_BUNDLE="dist/Ghost.app"
 # ---------------------------------------------------------------
 # 3b. Code-signing
 #
-#   If DEVELOPER_ID_APPLICATION is set (e.g. "Developer ID Application:
-#   Jesus Oliveira (TEAMID)"), do a proper Apple Developer ID sign that
-#   can pass notarization. Otherwise, fall back to an ad-hoc signature
-#   (`codesign --sign -`) — Gatekeeper still warns on first open, but the
-#   bundle is at least consistent / integrity-checked.
+# NOTE: PyInstaller already performs internal ad-hoc code-signing on the
+# bundle it produces (`Signing the BUNDLE...` in the build log). Re-signing
+# on top of that can corrupt embedded Frameworks/dylibs and break the pkg
+# payload extraction at install time. So here we only re-sign WHEN the user
+# provides a real Apple Developer ID — for notarizable builds. For the
+# default unsigned CI flow, we trust PyInstaller's signature and skip.
 # ---------------------------------------------------------------
-SIGN_ID="${DEVELOPER_ID_APPLICATION:--}"
-if [ "${SIGN_ID}" = "-" ]; then
-    echo "[mac-build] 3b/ ad-hoc code-signing (no Developer ID provided)"
-else
-    echo "[mac-build] 3b/ code-signing with Developer ID: ${SIGN_ID}"
-fi
-codesign --deep --force --sign "${SIGN_ID}" --timestamp --options runtime \
-    --entitlements /dev/stdin "${APP_BUNDLE}" <<'ENT' 2>/dev/null || \
-    codesign --deep --force --sign "${SIGN_ID}" "${APP_BUNDLE}"
+if [ -n "${DEVELOPER_ID_APPLICATION:-}" ]; then
+    echo "[mac-build] 3b/ re-signing with Developer ID: ${DEVELOPER_ID_APPLICATION}"
+    codesign --deep --force --sign "${DEVELOPER_ID_APPLICATION}" \
+        --timestamp --options runtime --entitlements /dev/stdin "${APP_BUNDLE}" <<'ENT'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -81,6 +77,9 @@ codesign --deep --force --sign "${SIGN_ID}" --timestamp --options runtime \
 </dict>
 </plist>
 ENT
+else
+    echo "[mac-build] 3b/ keeping PyInstaller's ad-hoc signature (no Developer ID provided)"
+fi
 
 # ---------------------------------------------------------------
 # 4. Fetch BlackHole 2ch driver pkg (fetched BEFORE pkgbuild so we can embed
