@@ -12,10 +12,10 @@
                            (https://github.com/ExistentialAudio/BlackHole).
                            Users can opt out of the driver step.
 
-  Compile: productbuild --distribution distribution.xml \
-                        --package-path <dir-with-pkgs> \
-                        --resources Resources \
-                        GhostInstaller-<version>.pkg
+  Compile: productbuild (distribution: distribution.xml,
+                         package-path: dir-with-pkgs,
+                         resources: Resources)
+                         GhostInstaller-version.pkg
 -->
 <installer-gui-script minSpecVersion="2">
     <title>Ghost</title>
