@@ -234,17 +234,6 @@ function ghostApp() {
                     }
                 });
 
-                // Expose the dropdown-popup result callback so the dedicated
-                // popup window can route the user's pick back to us.
-                window.applyDropdownResult = (kind, value) => {
-                    if (kind === 'preset') {
-                        this.selectedPreset = value;
-                    } else if (kind === 'captureMode') {
-                        this.captureMode = value;
-                    } else if (kind === 'monitor') {
-                        this.selectedMonitor = value;
-                    }
-                };
 
                 try {
                     this.presets = await window.pywebview.api.get_presets();
@@ -956,82 +945,6 @@ function ghostApp() {
             if (!url) return;
             try { window.pywebview.api.open_url ? window.pywebview.api.open_url(url) : window.open(url, '_blank'); }
             catch (_) { window.open(url, '_blank'); }
-        },
-
-        // =================================================================
-        // Chip dropdowns — in compact mode, open a floating popup window
-        // (positioned adjacent to the chip). In normal app mode, keep the
-        // original in-page flyout behaviour.
-        // =================================================================
-        async _openChipPopup(kind, items, selected, chipEl) {
-            // Need the main window's screen position to convert the chip's
-            // viewport-rect to absolute screen coords for positioning.
-            let mainRect;
-            try {
-                mainRect = await window.pywebview.api.get_main_window_rect();
-            } catch (_) { mainRect = null; }
-            if (!mainRect || mainRect.error) return;
-
-            const cRect = chipEl.getBoundingClientRect();
-            const screenX = Math.round(mainRect.x + cRect.left);
-            const screenY = Math.round(mainRect.y + cRect.bottom + 4);
-            const width = 240;
-            const height = Math.min(320, 50 + items.length * 36);
-            try {
-                await window.pywebview.api.show_dropdown_popup(
-                    kind, items, selected, screenX, screenY, width, height,
-                );
-            } catch (e) { console.warn('dropdown popup failed:', e); }
-        },
-
-        openPresetChip($event) {
-            const chipEl = $event.currentTarget;
-            if (this.compactMode) {
-                this.presetOpen = false;
-                this.captureModeOpen = false;
-                this.monitorOpen = false;
-                const items = (this.presets || []).map(p => ({ value: p, label: p }));
-                this._openChipPopup('preset', items, this.selectedPreset, chipEl);
-            } else {
-                this.captureModeOpen = false;
-                this.monitorOpen = false;
-                this.presetOpen = !this.presetOpen;
-            }
-        },
-
-        openCaptureModeChip($event) {
-            const chipEl = $event.currentTarget;
-            if (this.compactMode) {
-                this.presetOpen = false;
-                this.captureModeOpen = false;
-                this.monitorOpen = false;
-                const items = (this.captureModes || []).map(m => ({
-                    value: m.value, label: m.label, icon: m.icon,
-                }));
-                this._openChipPopup('captureMode', items, this.captureMode, chipEl);
-            } else {
-                this.presetOpen = false;
-                this.monitorOpen = false;
-                this.captureModeOpen = !this.captureModeOpen;
-            }
-        },
-
-        openMonitorChip($event) {
-            const chipEl = $event.currentTarget;
-            if (this.compactMode) {
-                this.presetOpen = false;
-                this.captureModeOpen = false;
-                this.monitorOpen = false;
-                const items = (this.monitors || []).map(m => ({
-                    value: m.index,
-                    label: (m.label || ('Monitor ' + m.index)) + ' (' + m.width + '×' + m.height + ')',
-                }));
-                this._openChipPopup('monitor', items, this.selectedMonitor, chipEl);
-            } else {
-                this.presetOpen = false;
-                this.captureModeOpen = false;
-                this.monitorOpen = !this.monitorOpen;
-            }
         },
 
         async installUpdate() {

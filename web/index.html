@@ -9,8 +9,8 @@
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
-    <link rel="stylesheet" href="style.css?v=1.0.6">
-    <link rel="stylesheet" href="pixel-ghost.css?v=1.0.6">
+    <link rel="stylesheet" href="style.css?v=1.0.7">
+    <link rel="stylesheet" href="pixel-ghost.css?v=1.0.7">
     <script defer src="vendor/alpine.min.js"></script>
     <script src="vendor/marked.min.js"></script>
 </head>
@@ -33,7 +33,11 @@
     </svg>
 </div>
 
-<div class="app" x-show="!docked" :class="{ 'compact': compactMode }">
+<div class="app" x-show="!docked"
+     :class="{
+       'compact': compactMode,
+       'update-banner-active': updateInfo.hasUpdate && !updateBannerDismissed && !updateDownloading
+     }">
     <!-- Compact bar quick controls (only visible in compactMode) -->
     <div class="compact-controls" x-show="compactMode">
         <div class="compact-drag" @mousedown="startDrag($event)" data-tooltip-pos="below" data-tooltip="Arraste para mover">

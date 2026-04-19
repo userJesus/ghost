@@ -269,7 +269,8 @@ input, textarea, button, select {
 }
 .compact-drag {
     flex: 1;
-    min-width: 0;
+    /* Ensure the logo always has room even when many tool buttons are present. */
+    min-width: 56px;
     height: 100%;
     display: flex;
     align-items: center;
@@ -278,6 +279,14 @@ input, textarea, button, select {
     cursor: grab;
     padding-left: 10px;
     padding-right: 8px;
+}
+.compact-drag > .brand-logo-compact {
+    /* Flex-shrink 0 keeps the logo from being squeezed out of view when the
+       compact bar gets crowded with tool buttons. */
+    flex-shrink: 0;
+    height: 15px;
+    width: auto;
+    pointer-events: none;
 }
 .compact-brand-dot {
     width: 14px;
@@ -452,6 +461,29 @@ input, textarea, button, select {
 }
 .update-banner-close:hover { background: rgba(255, 255, 255, 0.08); color: var(--text-primary); }
 .update-banner-close svg { width: 11px; height: 11px; }
+
+/* In compact mode the app shell is 200px tall and the banner would normally
+   sit below the tool-button row, taking precious vertical space. Pin it to
+   the very top of the window, floating over the entire bar with its own
+   slim row — the user notices the update, can dismiss, and the main UI
+   keeps its real estate. */
+.app.compact .update-banner {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 1000;
+    padding: 4px 8px;
+    font-size: 11px;
+    border-bottom: 1px solid rgba(97, 219, 180, 0.4);
+    background: linear-gradient(90deg, rgba(97, 219, 180, 0.18), rgba(60, 184, 149, 0.15));
+}
+.app.compact .update-banner-btn { padding: 2px 8px; font-size: 10.5px; }
+.app.compact .update-banner-btn-secondary { width: 20px; height: 20px; }
+.app.compact .update-banner-close { width: 18px; height: 18px; }
+/* When the update banner is visible in compact mode, push the tool-button
+   row down so the banner (fixed at top) doesn't cover it. */
+.app.compact.update-banner-active .compact-controls { top: 28px; }
 
 .update-banner-btn-secondary {
     width: 24px;
