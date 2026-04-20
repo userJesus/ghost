@@ -40,6 +40,107 @@ def _log_error(ctx: str, e: Exception) -> str:
     return f"{type(e).__name__}: {e}"
 
 
+def _snapshot_own_webview2_pids() -> list[int]:
+    """Walk the Windows process tree and return PIDs of msedgewebview2.exe,
+    WebView2Host.exe, and CefSharp.BrowserSubprocess.exe that are descendants
+    of the current process. Used by close_app to kill only our OWN helpers,
+    not webview2 instances owned by Outlook/Teams/VS Code or by a fresh
+    Ghost that happens to be starting up at the same moment.
+
+    Uses CreateToolhelp32Snapshot directly via ctypes so we don't take a
+    psutil dependency. Returns [] on non-Windows or if anything fails —
+    callers should treat empty as "fall back to image-name sweep"."""
+    if sys.platform != "win32":
+        return []
+    try:
+        import ctypes
+        from ctypes import wintypes
+        kernel32 = ctypes.windll.kernel32
+        TH32CS_SNAPPROCESS = 0x00000002
+
+        class PROCESSENTRY32W(ctypes.Structure):
+            _fields_ = [
+                ("dwSize", wintypes.DWORD),
+                ("cntUsage", wintypes.DWORD),
+                ("th32ProcessID", wintypes.DWORD),
+                ("th32DefaultHeapID", ctypes.c_void_p),
+                ("th32ModuleID", wintypes.DWORD),
+                ("cntThreads", wintypes.DWORD),
+                ("th32ParentProcessID", wintypes.DWORD),
+                ("pcPriClassBase", wintypes.LONG),
+                ("dwFlags", wintypes.DWORD),
+                ("szExeFile", wintypes.WCHAR * 260),
+            ]
+
+        kernel32.CreateToolhelp32Snapshot.restype = wintypes.HANDLE
+        kernel32.Process32FirstW.argtypes = [wintypes.HANDLE, ctypes.POINTER(PROCESSENTRY32W)]
+        kernel32.Process32NextW.argtypes = [wintypes.HANDLE, ctypes.POINTER(PROCESSENTRY32W)]
+        kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+
+        snap = kernel32.CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)
+        if not snap or snap == wintypes.HANDLE(-1).value:
+            return []
+
+        children_of: dict[int, list[tuple[int, str]]] = {}
+        try:
+            pe = PROCESSENTRY32W()
+            pe.dwSize = ctypes.sizeof(pe)
+            if kernel32.Process32FirstW(snap, ctypes.byref(pe)):
+                while True:
+                    children_of.setdefault(pe.th32ParentProcessID, []).append(
+                        (pe.th32ProcessID, pe.szExeFile.lower())
+                    )
+                    if not kernel32.Process32NextW(snap, ctypes.byref(pe)):
+                        break
+        finally:
+            kernel32.CloseHandle(snap)
+
+        target_names = ("msedgewebview2.exe", "webview2host.exe",
+                        "cefsharp.browsersubprocess.exe")
+        my_pid = os.getpid()
+        found: list[int] = []
+        queue = [my_pid]
+        visited = {my_pid}
+        while queue:
+            parent = queue.pop()
+            for child_pid, child_name in children_of.get(parent, []):
+                if child_pid in visited:
+                    continue
+                visited.add(child_pid)
+                queue.append(child_pid)
+                if child_name in target_names:
+                    found.append(child_pid)
+        return found
+    except Exception:
+        return []
+
+
+def _pid_alive(pid: int) -> bool:
+    """Return True if the given PID still has a process in the system.
+    Using OpenProcess with minimum rights so we can check even for processes
+    we don't own."""
+    if sys.platform != "win32":
+        return False
+    try:
+        import ctypes
+        kernel32 = ctypes.windll.kernel32
+        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+        h = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+        if not h:
+            return False
+        # Existing handle may still reference a process that already
+        # exited; check exit code to be precise.
+        exit_code = ctypes.c_ulong()
+        STILL_ACTIVE = 259
+        ok = kernel32.GetExitCodeProcess(h, ctypes.byref(exit_code))
+        kernel32.CloseHandle(h)
+        if not ok:
+            return False
+        return exit_code.value == STILL_ACTIVE
+    except Exception:
+        return False
+
+
 class GhostAPI:
     def __init__(self):
         self._window = None
@@ -1637,76 +1738,95 @@ class GhostAPI:
             return {"error": _log_error("hide_app", e)}
 
     def close_app(self) -> dict:
-        """Encerra o app completamente e LIMPO: destrói janelas, mata filhos
-        do WebView2, espera até eles realmente saírem, só então força
-        os._exit. Sem essa espera, os filhos (msedgewebview2.exe) seguem vivos
-        1–2s depois, segurando locks na pasta UserData do WebView2 e nas DLLs
-        compartilhadas; a próxima abertura rápida do Ghost trava ("não está
-        respondendo") porque o pywebview novo não consegue inicializar."""
+        """Close cleanly so the NEXT launch of Ghost starts fast, even if
+        the user triggers it immediately (the "clica no X → clica no ícone
+        de novo → não abre de primeira" pattern). Three pieces, in order:
+
+        1. Release the single-instance mutex NOW (not at process exit) so
+           a new Ghost doesn't have to wait ~1.5s for our cleanup to finish
+           before it can even attempt its own init.
+        2. Snapshot OUR own webview2 children by walking the process tree.
+           Kill only those PIDs — not by image name globally — so a new
+           Ghost that's already starting up with its own fresh helpers
+           doesn't get its webview2 nuked by our dying session.
+        3. Poll for those specific PIDs to actually exit (not a global
+           image-name check), so other apps' webview2 helpers (Outlook,
+           Teams) don't keep us waiting the full timeout every time.
+        """
         try:
-            # (1) Destrói janelas pywebview (main + response popup + dropdown)
+            # Snapshot our own webview2 descendants BEFORE destroying the
+            # windows — once pywebview tears down, its handles may close
+            # and the children can re-parent under winlogon/explorer,
+            # making them harder to identify.
+            own_pids = _snapshot_own_webview2_pids()
+
+            # Release the mutex early. New Ghost can now acquire it
+            # without waiting for the rest of our cleanup.
+            try:
+                import main as _ghost_main
+                _ghost_main._release_instance_mutex()
+            except Exception:
+                pass
+
+            # Destroy pywebview windows
             import webview
             for w in list(webview.windows):
                 try: w.destroy()
                 except Exception: pass
 
-            # (2) Hard-cleanup em THREAD SEPARADA — damos tempo pro pywebview
-            # fechar graciosamente antes de mandar taskkill.
             import os
             import subprocess
             import threading
             import time
-            pid = os.getpid()
             CREATE_NO_WINDOW = 0x08000000
 
             def _nuke():
-                # Pequena espera pro pywebview desmontar suas janelas
                 time.sleep(0.25)
 
-                # Mata TODOS os webview2 helpers globalmente ANTES de os._exit.
-                # NÃO usamos taskkill /T /PID self aqui, porque isso nos
-                # mataria agora e o wait loop abaixo nunca rodaria. A ideia é:
-                # matar os filhos, ESPERAR eles sumirem, e SÓ ENTÃO sair. Isso
-                # garante que os handles de arquivo do WebView2 UserData foram
-                # liberados pro próximo boot do Ghost.
-                for image in ("msedgewebview2.exe", "WebView2Host.exe",
-                              "CefSharp.BrowserSubprocess.exe"):
-                    try:
-                        subprocess.run(
-                            ["taskkill", "/F", "/IM", image],
-                            capture_output=True, timeout=2,
-                            creationflags=CREATE_NO_WINDOW,
-                        )
-                    except Exception:
-                        pass
+                # Kill only OUR captured PIDs. If none were captured, fall
+                # back to the image-name sweep as a safety net — better to
+                # over-kill than leak zombies in an edge case.
+                if own_pids:
+                    for p in own_pids:
+                        try:
+                            subprocess.run(
+                                ["taskkill", "/F", "/PID", str(p)],
+                                capture_output=True, timeout=2,
+                                creationflags=CREATE_NO_WINDOW,
+                            )
+                        except Exception:
+                            pass
+                else:
+                    for image in ("msedgewebview2.exe", "WebView2Host.exe",
+                                  "CefSharp.BrowserSubprocess.exe"):
+                        try:
+                            subprocess.run(
+                                ["taskkill", "/F", "/IM", image],
+                                capture_output=True, timeout=2,
+                                creationflags=CREATE_NO_WINDOW,
+                            )
+                        except Exception:
+                            pass
 
-                # Polling: espera até 1.5s pros helpers realmente morrerem
-                # (taskkill é fire-and-forget; o SO precisa de alguns ms pra
-                # finalizar cada processo e liberar seus handles).
-                for _ in range(7):
-                    time.sleep(0.2)
-                    try:
-                        r = subprocess.run(
-                            ["tasklist", "/FI", "IMAGENAME eq msedgewebview2.exe",
-                             "/FO", "CSV", "/NH"],
-                            capture_output=True, text=True, timeout=2,
-                            creationflags=CREATE_NO_WINDOW,
-                        )
-                        if "msedgewebview2.exe" not in (r.stdout or "").lower():
+                # Poll specifically for our captured PIDs to exit. Bail
+                # fast if all are gone; otherwise give the OS up to 1.5s
+                # total. A new Ghost that spawns its own helpers won't
+                # delay us because we only look at OUR original PIDs.
+                if own_pids:
+                    deadline = time.monotonic() + 1.5
+                    while time.monotonic() < deadline:
+                        time.sleep(0.15)
+                        still_alive = [p for p in own_pids if _pid_alive(p)]
+                        if not still_alive:
                             break
-                    except Exception:
-                        break
+                        own_pids[:] = still_alive
 
-                # Agora sim saímos. Quando o Ghost.exe morre, o SO reap os
-                # processos filhos restantes e libera TODOS os handles que
-                # pertenciam à nossa árvore.
                 os._exit(0)
 
             threading.Thread(target=_nuke, daemon=True).start()
             return {"ok": True}
         except Exception as e:
             _log_error("close_app", e)
-            # Fallback brutal
             import os
             os._exit(1)
 

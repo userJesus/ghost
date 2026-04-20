@@ -209,6 +209,27 @@ _SHOW_EVENT_NAME = "Global\\GhostShowEvent"
 _INSTANCE_MUTEX_NAME = "Global\\GhostSingleInstance"
 
 
+def _release_instance_mutex():
+    """Release the single-instance mutex handle right now. Called from
+    close_app so a rapid "close → reopen" doesn't have to wait for our
+    webview2 cleanup (up to ~1.5s) before the new Ghost can acquire the
+    mutex. The mutex is normally released at process exit; closing it
+    explicitly here shaves off the cleanup window and avoids the "first
+    click didn't open" symptom users saw on fast reopen."""
+    global _SINGLE_INSTANCE_MUTEX
+    if _SINGLE_INSTANCE_MUTEX is None:
+        return
+    try:
+        import win32api
+        try:
+            win32api.CloseHandle(_SINGLE_INSTANCE_MUTEX)
+        except Exception:
+            pass
+        _SINGLE_INSTANCE_MUTEX = None
+    except Exception:
+        pass
+
+
 def _ensure_single_instance_windows() -> bool:
     """Windows: use a named mutex to detect a running Ghost.
 
