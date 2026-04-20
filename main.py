@@ -586,13 +586,16 @@ def main():
     # release locked file handles; now we force that release up front.
     _preflight_cleanup_webview2()
 
-    # (1b) Attach this process to a Windows Job Object with KILL_ON_JOB_CLOSE
-    # so ANY death of Ghost.exe (including Task Manager force-close) causes
-    # the kernel to cascade-kill webview2/WebView2Host children. Without
-    # this, force-close leaves zombie msedgewebview2 holding locks on the
-    # user-data folder and the next launch fails. Skipped in dev so the
-    # debugger doesn't nuke unrelated webview2 helpers (Outlook, Teams, etc).
-    _assign_process_to_kill_on_close_job()
+    # (1b) [REMOVED] Windows Job Object with KILL_ON_JOB_CLOSE. Attempted in
+    # 1.1.4 to cascade-kill webview2 on any Ghost death, but WebView2's
+    # sandbox uses CREATE_BREAKAWAY_FROM_JOB when spawning msedgewebview2
+    # helpers, which fails when the parent is in a job without
+    # JOB_OBJECT_LIMIT_BREAKAWAY_OK — causing Ghost to crash during
+    # webview.start(). Setting BREAKAWAY_OK defeats the whole point because
+    # helpers would then escape the job. Force-close cleanup is instead
+    # handled by the next-launch preflight sweep (which kills zombie
+    # webview2 helpers before creating the new window).
+    # _assign_process_to_kill_on_close_job()  # intentionally disabled
 
     # (2) Validate WebView2 runtime is installed. On modern Win10/11 it's
     # pre-installed, but some LTSC or stripped installs may lack it.
