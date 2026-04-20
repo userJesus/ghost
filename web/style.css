@@ -761,52 +761,153 @@ input, textarea, button, select {
     flex-shrink: 0;
 }
 
-/* ── Maximized mode overrides ── */
-.app.maximized .header {
-    padding: 8px 16px;
-    min-height: 56px;
+/* ============ MAXIMIZED MODE — left sidebar layout (ChatGPT-style) ============
+   In maximized mode the window fills the monitor work area, so we repurpose
+   the header into a LEFT SIDEBAR. Brand + tool sections stack vertically in
+   a 260px column, chat + composer fill the rest. Window controls (dock,
+   minimize, close) float to the top-right via absolute positioning. */
+
+.app.maximized {
+    /* Keep the base flex-column layout so chat flex:1 still fills vertical
+       space. The header is absolutely positioned as a 260px sidebar on the
+       left; padding-left on the container reserves that space for every
+       flow child (main, composer, banners). */
+    position: relative;
+    height: 100vh;
+    padding-left: 260px;
+    overflow: hidden;
 }
+
+/* The header becomes an absolutely-positioned sidebar on the left. */
+.app.maximized > .header {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 260px;
+    height: 100vh;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+    padding: 28px 16px 20px;
+    gap: 28px;
+    background: rgba(0, 0, 0, 0.22);
+    border-right: 1px solid rgba(255, 255, 255, 0.05);
+    overflow-y: auto;
+    overflow-x: hidden;
+    z-index: 10;
+}
+
+/* Brand logo: smaller at the top of sidebar */
+.app.maximized .brand-logo {
+    width: 88px;
+    height: auto;
+    margin: 0 6px 6px;
+    flex-shrink: 0;
+}
+
+/* Actions stack vertically inside the sidebar */
+.app.maximized .header-actions {
+    flex-direction: column;
+    align-items: stretch;
+    width: 100%;
+    gap: 22px;
+    flex: 1;
+    min-height: 0;
+}
+
+.app.maximized .header-action-group {
+    flex-direction: column;
+    align-items: stretch;
+    width: 100%;
+    gap: 18px;
+}
+
+/* Window controls (dock / minimize / close) float top-right, outside the sidebar */
+.app.maximized .header-window-controls {
+    position: absolute;
+    top: 12px;
+    right: 14px;
+    z-index: 50;
+}
+
+/* Tool sections stack vertically with labels + full-width buttons */
 .app.maximized .tool-section {
     flex-direction: column;
-    align-items: center;
-    gap: 2px;
+    align-items: stretch;
+    gap: 4px;
 }
 .app.maximized .tool-section-label {
     display: block;
+    padding: 0 10px 6px;
+    font-size: 10.5px;
+    color: var(--text-tertiary);
 }
-.app.maximized .tool-section-divider {
-    height: 40px;
-    align-self: center;
-}
-.app.maximized .tool-btn {
-    width: auto;
-    min-width: 56px;
-    padding: 4px 10px;
+.app.maximized .tool-section-row {
     flex-direction: column;
+    align-items: stretch;
     gap: 2px;
-    height: auto;
+    width: 100%;
+}
+
+/* Divider between sections in the sidebar */
+.app.maximized .tool-section-divider {
+    height: 1px;
+    width: 100%;
+    margin: 4px 0;
+    background: rgba(255, 255, 255, 0.05);
+}
+
+/* Tool buttons become full-width rows: icon left, label right */
+.app.maximized .tool-btn {
+    width: 100%;
+    height: 36px;
+    padding: 0 12px;
+    justify-content: flex-start;
+    flex-direction: row;
+    gap: 12px;
+    border-radius: 8px;
 }
 .app.maximized .tool-btn::after {
     content: attr(data-label);
-    font-size: 11px;
+    font-size: 13.5px;
     font-weight: 500;
-    letter-spacing: 0.2px;
     color: var(--text-secondary);
-    margin-top: 2px;
+    flex: 1;
+    text-align: left;
+}
+.app.maximized .tool-btn:hover::after {
+    color: var(--text-primary);
+}
+.app.maximized .tool-btn.active,
+.app.maximized .tool-btn.recording {
+    background: rgba(97, 219, 180, 0.12);
 }
 .app.maximized .tool-btn.active::after,
 .app.maximized .tool-btn.recording::after {
     color: var(--accent);
 }
-/* Wider chat + composer in maximized */
-.app.maximized .chat {
-    max-width: none;
-    padding-left: 64px;
-    padding-right: 64px;
+
+/* The tool-dot stays a tiny pulse, but anchors to the right in maximized */
+.app.maximized .tool-btn .tool-dot,
+.app.maximized .tool-btn .tool-dot-rec {
+    position: static;
+    margin-left: auto;
+    flex-shrink: 0;
 }
-.app.maximized .composer {
-    padding-left: 64px;
-    padding-right: 64px;
+
+/* Inner chat area: constrain max-width on big monitors for readability */
+.app.maximized > main,
+.app.maximized > .chat {
+    max-width: 960px;
+    margin-left: auto;
+    margin-right: auto;
+    width: 100%;
+}
+.app.maximized > .composer {
+    max-width: 960px;
+    margin-left: auto;
+    margin-right: auto;
+    width: 100%;
 }
 
 /* Header action icon button (Settings) */
