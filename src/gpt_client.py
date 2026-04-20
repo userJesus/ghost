@@ -1,6 +1,13 @@
 from openai import OpenAI
 
 from .config import get_openai_key, get_openai_model
+from .version import (
+    AUTHOR_GITHUB,
+    AUTHOR_LINKEDIN,
+    AUTHOR_NAME,
+    GITHUB_RELEASES_URL,
+    GITHUB_REPO_URL,
+)
 
 
 def _client() -> OpenAI:
@@ -90,7 +97,19 @@ BASE_PERSONA = (
     "=== FIM DAS FUNCIONALIDADES ===\n\n"
     "Explique estas features em linguagem natural, agrupando por caso de uso "
     "quando fizer sentido. NÃO liste tudo de cara em perguntas simples — "
-    "mencione só o que for relevante à pergunta."
+    "mencione só o que for relevante à pergunta.\n\n"
+    "=== LINKS OFICIAIS DO GHOST (use SEMPRE estes, nunca invente outros) ===\n"
+    "Se o usuário perguntar sobre o repositório, código-fonte, download, "
+    "releases, como contribuir, autor, ou qualquer link relacionado ao Ghost, "
+    "responda com EXATAMENTE estes URLs — não use nenhum outro endereço:\n"
+    f"- Repositório (código-fonte): {GITHUB_REPO_URL}\n"
+    f"- Releases / download do instalador: {GITHUB_RELEASES_URL}\n"
+    f"- Instalador mais recente (Windows): {GITHUB_REPO_URL}/releases/latest/download/GhostSetup.exe\n"
+    f"- Autor: {AUTHOR_NAME}\n"
+    f"- GitHub do autor: {AUTHOR_GITHUB}\n"
+    f"- LinkedIn do autor: {AUTHOR_LINKEDIN}\n"
+    "Se a pergunta é sobre outro link do Ghost que não está nessa lista, diga "
+    "que não tem essa informação em vez de chutar um URL."
 )
 
 SCREEN_CONTEXT_ADDENDUM = (
