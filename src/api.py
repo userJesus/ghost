@@ -1637,41 +1637,72 @@ class GhostAPI:
             return {"error": _log_error("hide_app", e)}
 
     def close_app(self) -> dict:
-        """Encerra o app completamente: destrói todas as janelas +
-        force-kill da árvore de processos (garante que msedgewebview2.exe
-        filhos não fiquem zumbis segurando a pasta UserData do WebView2 —
-        se ficarem, a próxima instância crasha no init do WebView)."""
+        """Encerra o app completamente e LIMPO: destrói janelas, mata filhos
+        do WebView2, espera até eles realmente saírem, só então força
+        os._exit. Sem essa espera, os filhos (msedgewebview2.exe) seguem vivos
+        1–2s depois, segurando locks na pasta UserData do WebView2 e nas DLLs
+        compartilhadas; a próxima abertura rápida do Ghost trava ("não está
+        respondendo") porque o pywebview novo não consegue inicializar."""
         try:
-            # 1. Destrói janelas pywebview (main + response popup)
+            # (1) Destrói janelas pywebview (main + response popup + dropdown)
             import webview
             for w in list(webview.windows):
                 try: w.destroy()
                 except Exception: pass
 
-            # 2. Hard-kill de TODA a árvore de processos (taskkill /T), não só
-            # nós mesmos. os._exit() sozinho só mata o Python — os processos
-            # filhos msedgewebview2.exe (do WebView2) seguem vivos por 1-2s,
-            # e durante esse tempo eles mantêm lock na pasta UserData/ do
-            # WebView2. Se o usuário reabrir rápido, o novo Ghost falha ao
-            # inicializar o WebView2 (pasta bloqueada) e crasha.
+            # (2) Hard-cleanup em THREAD SEPARADA — damos tempo pro pywebview
+            # fechar graciosamente antes de mandar taskkill.
             import os
             import subprocess
             import threading
+            import time
             pid = os.getpid()
+            CREATE_NO_WINDOW = 0x08000000
 
             def _nuke():
-                try:
-                    subprocess.run(
-                        ["taskkill", "/F", "/T", "/PID", str(pid)],
-                        capture_output=True, timeout=3,
-                        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-                    )
-                except Exception:
-                    pass
-                # Se taskkill falhou por algum motivo, força saída mesmo assim
+                # Pequena espera pro pywebview desmontar suas janelas
+                time.sleep(0.25)
+
+                # Mata TODOS os webview2 helpers globalmente ANTES de os._exit.
+                # NÃO usamos taskkill /T /PID self aqui, porque isso nos
+                # mataria agora e o wait loop abaixo nunca rodaria. A ideia é:
+                # matar os filhos, ESPERAR eles sumirem, e SÓ ENTÃO sair. Isso
+                # garante que os handles de arquivo do WebView2 UserData foram
+                # liberados pro próximo boot do Ghost.
+                for image in ("msedgewebview2.exe", "WebView2Host.exe",
+                              "CefSharp.BrowserSubprocess.exe"):
+                    try:
+                        subprocess.run(
+                            ["taskkill", "/F", "/IM", image],
+                            capture_output=True, timeout=2,
+                            creationflags=CREATE_NO_WINDOW,
+                        )
+                    except Exception:
+                        pass
+
+                # Polling: espera até 1.5s pros helpers realmente morrerem
+                # (taskkill é fire-and-forget; o SO precisa de alguns ms pra
+                # finalizar cada processo e liberar seus handles).
+                for _ in range(7):
+                    time.sleep(0.2)
+                    try:
+                        r = subprocess.run(
+                            ["tasklist", "/FI", "IMAGENAME eq msedgewebview2.exe",
+                             "/FO", "CSV", "/NH"],
+                            capture_output=True, text=True, timeout=2,
+                            creationflags=CREATE_NO_WINDOW,
+                        )
+                        if "msedgewebview2.exe" not in (r.stdout or "").lower():
+                            break
+                    except Exception:
+                        break
+
+                # Agora sim saímos. Quando o Ghost.exe morre, o SO reap os
+                # processos filhos restantes e libera TODOS os handles que
+                # pertenciam à nossa árvore.
                 os._exit(0)
 
-            threading.Timer(0.2, _nuke).start()
+            threading.Thread(target=_nuke, daemon=True).start()
             return {"ok": True}
         except Exception as e:
             _log_error("close_app", e)
