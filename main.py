@@ -416,6 +416,119 @@ def _preflight_cleanup_webview2() -> None:
         _slog(f"preflight: cache sweep error (non-fatal): {e}")
 
 
+_GHOST_JOB_HANDLE = None  # keep the Job Object handle alive for process lifetime
+
+
+def _assign_process_to_kill_on_close_job() -> bool:
+    """Attach this process to a Windows Job Object with KILL_ON_JOB_CLOSE.
+    When the process dies by ANY means — clean os._exit, crash, SIGKILL,
+    Task Manager "End Task", Task Manager "End Process Tree", pulling the
+    plug — Windows automatically terminates every other process in the job.
+    That's the ONLY way to guarantee msedgewebview2.exe children don't
+    survive as zombies holding locks on `%USERPROFILE%\\.ghost\\webview-cache`,
+    which was blocking the next launch after a force-close.
+
+    Graceful-close cleanup (close_app) and the update flow already kill
+    helpers explicitly; this Job Object is the safety net that covers the
+    THIRD case — the user who alt-f4s three times / kills from Task Manager
+    / hits a Windows Error Reporting crash / loses power. We skip this in
+    dev (non-frozen) so that re-running main.py from the venv doesn't nuke
+    unrelated webview2 processes the IDE or Teams is using.
+
+    Returns True on success. Failure is non-fatal: the app still works, but
+    without the cascade-kill guarantee.
+    """
+    global _GHOST_JOB_HANDLE
+    if not getattr(sys, "frozen", False):
+        # Dev mode: skip — don't kill webview2 helpers owned by VS Code /
+        # Outlook / Teams when the developer stops the debugger.
+        return False
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        kernel32 = ctypes.windll.kernel32
+
+        # Windows SDK constants
+        JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x00002000
+        JobObjectExtendedLimitInformation = 9
+
+        class JOBOBJECT_BASIC_LIMIT_INFORMATION(ctypes.Structure):
+            _fields_ = [
+                ("PerProcessUserTimeLimit", ctypes.c_longlong),
+                ("PerJobUserTimeLimit", ctypes.c_longlong),
+                ("LimitFlags", wintypes.DWORD),
+                ("MinimumWorkingSetSize", ctypes.c_size_t),
+                ("MaximumWorkingSetSize", ctypes.c_size_t),
+                ("ActiveProcessLimit", wintypes.DWORD),
+                ("Affinity", ctypes.c_size_t),
+                ("PriorityClass", wintypes.DWORD),
+                ("SchedulingClass", wintypes.DWORD),
+            ]
+
+        class IO_COUNTERS(ctypes.Structure):
+            _fields_ = [
+                ("ReadOperationCount", ctypes.c_ulonglong),
+                ("WriteOperationCount", ctypes.c_ulonglong),
+                ("OtherOperationCount", ctypes.c_ulonglong),
+                ("ReadTransferCount", ctypes.c_ulonglong),
+                ("WriteTransferCount", ctypes.c_ulonglong),
+                ("OtherTransferCount", ctypes.c_ulonglong),
+            ]
+
+        class JOBOBJECT_EXTENDED_LIMIT_INFORMATION(ctypes.Structure):
+            _fields_ = [
+                ("BasicLimitInformation", JOBOBJECT_BASIC_LIMIT_INFORMATION),
+                ("IoInfo", IO_COUNTERS),
+                ("ProcessMemoryLimit", ctypes.c_size_t),
+                ("JobMemoryLimit", ctypes.c_size_t),
+                ("PeakProcessMemoryUsed", ctypes.c_size_t),
+                ("PeakJobMemoryUsed", ctypes.c_size_t),
+            ]
+
+        # Typing hints for ctypes so return values aren't auto-truncated to int32.
+        kernel32.CreateJobObjectW.restype = wintypes.HANDLE
+        kernel32.AssignProcessToJobObject.restype = wintypes.BOOL
+        kernel32.SetInformationJobObject.restype = wintypes.BOOL
+        kernel32.GetCurrentProcess.restype = wintypes.HANDLE
+        kernel32.CloseHandle.restype = wintypes.BOOL
+
+        job = kernel32.CreateJobObjectW(None, None)
+        if not job:
+            _slog("job: CreateJobObjectW failed")
+            return False
+
+        info = JOBOBJECT_EXTENDED_LIMIT_INFORMATION()
+        info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+        if not kernel32.SetInformationJobObject(
+            job, JobObjectExtendedLimitInformation,
+            ctypes.byref(info), ctypes.sizeof(info),
+        ):
+            kernel32.CloseHandle(job)
+            _slog("job: SetInformationJobObject failed")
+            return False
+
+        if not kernel32.AssignProcessToJobObject(job, kernel32.GetCurrentProcess()):
+            # Windows returns ERROR_ACCESS_DENIED (5) when the process is
+            # already in a job that forbids breakaway. Modern Windows 10+
+            # supports nested jobs so this is rare, but if it happens we
+            # just skip — the app still works, we just lose cascade-kill.
+            err = ctypes.get_last_error()
+            kernel32.CloseHandle(job)
+            _slog(f"job: AssignProcessToJobObject failed (err={err}) — process may already be in a parent job")
+            return False
+
+        # Keep the handle alive for the lifetime of the process. When the
+        # process exits, this handle closes, triggering KILL_ON_JOB_CLOSE
+        # which terminates every other process in the job.
+        _GHOST_JOB_HANDLE = job
+        _slog("job: KILL_ON_JOB_CLOSE assigned — orphan webview2 zombies are now impossible")
+        return True
+    except Exception as e:
+        _slog(f"job: setup error (non-fatal): {e}")
+        return False
+
+
 def _check_webview2_runtime() -> bool:
     """Return True if the WebView2 runtime is installed. If not, show a
     MessageBox pointing the user to the evergreen installer URL.
@@ -472,6 +585,14 @@ def main():
     # reinstall" reports. Reinstalling was just buying time for the OS to
     # release locked file handles; now we force that release up front.
     _preflight_cleanup_webview2()
+
+    # (1b) Attach this process to a Windows Job Object with KILL_ON_JOB_CLOSE
+    # so ANY death of Ghost.exe (including Task Manager force-close) causes
+    # the kernel to cascade-kill webview2/WebView2Host children. Without
+    # this, force-close leaves zombie msedgewebview2 holding locks on the
+    # user-data folder and the next launch fails. Skipped in dev so the
+    # debugger doesn't nuke unrelated webview2 helpers (Outlook, Teams, etc).
+    _assign_process_to_kill_on_close_job()
 
     # (2) Validate WebView2 runtime is installed. On modern Win10/11 it's
     # pre-installed, but some LTSC or stripped installs may lack it.
