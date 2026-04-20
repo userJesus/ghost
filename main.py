@@ -376,19 +376,42 @@ def _preflight_cleanup_webview2() -> None:
         import shutil
         temp_root = os.environ.get("TEMP") or os.environ.get("TMP")
         if temp_root and os.path.isdir(temp_root):
-            swept = 0
-            for candidate in glob.glob(os.path.join(temp_root, "tmp*")):
-                # Only act on directories that look like pywebview's WebView2
-                # UserData temps — presence of the EBWebView child proves it.
-                if not os.path.isdir(os.path.join(candidate, "EBWebView")):
-                    continue
-                try:
+            # Two-pass sweep: first pass deletes what it can; second pass
+            # retries dirs that failed (usually because a webview2 child was
+            # still tearing down). Between passes we wait an extra beat so
+            # the OS can finish releasing handles from the taskkills above.
+            # We always log — both success counts and leftovers — so post-
+            # update crash reports carry enough signal to diagnose a "my new
+            # Ghost didn't start" issue without forcing the user to send
+            # stderr dumps.
+            remaining = []
+            swept_total = 0
+            for pass_idx in range(2):
+                swept_pass = 0
+                leftovers = []
+                for candidate in glob.glob(os.path.join(temp_root, "tmp*")):
+                    # Only act on dirs that look like pywebview's WebView2
+                    # UserData temps — presence of EBWebView child proves it.
+                    if not os.path.isdir(os.path.join(candidate, "EBWebView")):
+                        continue
                     shutil.rmtree(candidate, ignore_errors=True)
-                    swept += 1
-                except Exception:
-                    pass
-            if swept:
-                _slog(f"preflight: swept {swept} orphan WebView2 cache dir(s)")
+                    if os.path.isdir(candidate):
+                        leftovers.append(candidate)
+                    else:
+                        swept_pass += 1
+                swept_total += swept_pass
+                remaining = leftovers
+                if not leftovers:
+                    break
+                # Second chance: give the OS 400ms to release any stragglers.
+                time.sleep(0.4)
+            if swept_total:
+                _slog(f"preflight: swept {swept_total} orphan WebView2 cache dir(s)")
+            if remaining:
+                # Non-fatal but important signal for diagnosing post-update
+                # crashes — a locked cache dir means a webview2 handle leaked
+                # somewhere and the new session might race against it.
+                _slog(f"preflight: WARNING {len(remaining)} cache dir(s) could not be deleted (locked?); first: {remaining[0]}")
     except Exception as e:
         _slog(f"preflight: cache sweep error (non-fatal): {e}")
 

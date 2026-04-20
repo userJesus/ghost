@@ -122,9 +122,50 @@ begin
        '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
   Exec('taskkill.exe', '/F /T /IM msedgewebview2.exe',
        '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  Exec('taskkill.exe', '/F /T /IM WebView2Host.exe',
+       '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
   // Give Windows a beat to release any lingering file handles.
   Sleep(500);
   Result := '';
+end;
+
+// After extraction but BEFORE [Run] relaunches Ghost: double-kill any
+// webview2 that respawned during install and wipe orphan `%TEMP%\tmp*\EBWebView`
+// folders. pywebview's default data_dir is tempfile.mkdtemp and never cleans
+// up; stale ones accumulate across versions and have caused the "Ghost opened
+// after update then crashed" reports — WebView2 init races with a temp
+// folder still locked by a zombie helper from the previous version. Doing
+// the sweep here, while the installer still has sole access and no app
+// process is alive, closes that race window. The new Ghost's own preflight
+// re-runs this on startup as belt-and-suspenders.
+procedure CurStepChanged(CurStep: TSetupStep);
+var
+  ResultCode: Integer;
+  PsCmd: String;
+begin
+  if CurStep = ssPostInstall then
+  begin
+    // Belt: re-kill in case anything respawned during the ~1-2s extraction.
+    Exec('taskkill.exe', '/F /T /IM msedgewebview2.exe',
+         '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+    Exec('taskkill.exe', '/F /T /IM WebView2Host.exe',
+         '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+    Sleep(400);
+
+    // Suspenders: sweep orphan pywebview WebView2 UserData caches. We only
+    // target dirs that actually contain an EBWebView child — that's the
+    // pywebview signature, so third-party tmp* dirs stay untouched.
+    PsCmd := 'Get-ChildItem -Path $env:TEMP -Directory -Filter ''tmp*'' ' +
+             '-ErrorAction SilentlyContinue | Where-Object { Test-Path ' +
+             '(Join-Path $_.FullName ''EBWebView'') } | ForEach-Object { ' +
+             'Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $_.FullName }';
+    Exec('powershell.exe',
+         '-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "' + PsCmd + '"',
+         '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+
+    // Final settle before [Run] launches the new Ghost.exe.
+    Sleep(800);
+  end;
 end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
