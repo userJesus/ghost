@@ -1762,6 +1762,67 @@ class GhostAPI:
         except Exception as e:
             return {"error": _log_error("stop_kb_capture", e)}
 
+    def enter_maximized(self) -> dict:
+        """Fill the work area of the current monitor (like Windows "maximize"
+        but excluding the taskbar). Saves the pre-maximize rect so exit_maximized
+        restores the previous window size/position."""
+        try:
+            import win32api
+            import win32con
+            import win32gui
+            if not self._hwnd:
+                return {"error": "No HWND"}
+
+            rect = win32gui.GetWindowRect(self._hwnd)
+            self._saved_rect = (rect[0], rect[1], rect[2] - rect[0], rect[3] - rect[1])
+
+            pt = ((rect[0] + rect[2]) // 2, (rect[1] + rect[3]) // 2)
+            hmon = win32api.MonitorFromPoint(pt, win32con.MONITOR_DEFAULTTONEAREST)
+            info = win32api.GetMonitorInfo(hmon)
+            work = info.get("Work") or (0, 0, 1920, 1080)
+            wl, wt, wr, wb = work
+
+            # Fill the full work area (taskbar is already excluded)
+            x, y = wl, wt
+            w, h = wr - wl, wb - wt
+
+            SWP_NOZORDER_LOCAL = 0x0004
+            SWP_NOACTIVATE_LOCAL = 0x0010
+            win32gui.SetWindowPos(
+                self._hwnd, 0, x, y, w, h,
+                SWP_NOZORDER_LOCAL | SWP_NOACTIVATE_LOCAL,
+            )
+            return {"ok": True, "x": x, "y": y, "w": w, "h": h}
+        except Exception as e:
+            return {"error": _log_error("enter_maximized", e)}
+
+    def exit_maximized(self) -> dict:
+        """Leave maximized mode and restore the saved rect, or a sane default
+        580x720 centered if no saved rect exists (e.g. first boot)."""
+        try:
+            import win32gui
+            if not self._hwnd:
+                return {"error": "No HWND"}
+            if self._saved_rect:
+                x, y, w, h = self._saved_rect
+            else:
+                monitor = self._current_monitor() or (self._monitors[0] if self._monitors else None)
+                if monitor:
+                    w, h = 580, 720
+                    x = monitor["left"] + (monitor["width"] - w) // 2
+                    y = monitor["top"] + (monitor["height"] - h) // 2
+                else:
+                    x, y, w, h = 100, 100, 580, 720
+            SWP_NOZORDER_LOCAL = 0x0004
+            SWP_NOACTIVATE_LOCAL = 0x0010
+            win32gui.SetWindowPos(
+                self._hwnd, 0, x, y, w, h,
+                SWP_NOZORDER_LOCAL | SWP_NOACTIVATE_LOCAL,
+            )
+            return {"ok": True}
+        except Exception as e:
+            return {"error": _log_error("exit_maximized", e)}
+
     def enter_compact_bar(self) -> dict:
         """Shrink window to a composer-only bar at bottom-right. Responses appear
         in a separate floating popup at the top-right."""

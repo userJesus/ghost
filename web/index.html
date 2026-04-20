@@ -35,82 +35,10 @@
 
 <div class="app" x-show="!docked"
      :class="{
-       'compact': compactMode,
+       'maximized': maximizedMode,
        'update-banner-active': updateInfo.hasUpdate && !updateBannerDismissed && !updateDownloading
      }">
-    <!-- Compact bar quick controls (only visible in compactMode) -->
-    <div class="compact-controls" x-show="compactMode">
-        <div class="compact-drag" @mousedown="startDrag($event)" data-tooltip-pos="below" data-tooltip="Arraste para mover">
-            <svg class="brand-logo brand-logo-compact" viewBox="0 0 894 328" fill="none" aria-label="Ghost">
-                <path d="M479.868 51.8809C496.207 48.9259 523.552 53.6807 538.223 62.0275C558.946 73.8197 572.963 91.2629 581.414 115.765C585.425 127.389 586.988 162.352 584.257 179.312C578.846 212.931 561.424 243.399 535.867 263.951C521.308 275.659 496.474 290.147 490.979 290.147C485.948 290.147 483.056 287.997 483.056 284.244C483.056 282.865 487.939 276.136 493.913 269.28C506.389 254.961 513.243 244.926 515.734 237.328C519.4 226.145 513.517 217.833 501.935 217.833C496.397 217.833 494.864 218.548 490.374 223.232C487.525 226.201 482.986 232.615 480.284 237.482C470.475 255.149 452.368 272.865 429.928 286.744C407.038 300.896 396.308 303.305 388.905 295.931C382.579 289.643 383.184 283.957 391.276 273.656C394.872 269.084 399.524 262.144 401.607 258.244C404.099 253.587 405.433 248.404 405.498 243.129L406.194 185.929C406.898 128.279 407.292 119.791 409.565 112.901C420.385 80.0486 444.405 58.8332 478.256 52.1868L479.868 51.8809ZM460.272 99.4628C444.975 99.4628 432.575 111.803 432.575 127.025C432.575 142.246 444.975 154.586 460.272 154.586C475.568 154.586 487.968 142.246 487.968 127.025C487.968 111.803 475.568 99.4631 460.272 99.4628ZM530.526 99.4628C515.23 99.4628 502.829 111.803 502.829 127.025C502.829 142.246 515.23 154.586 530.526 154.586C545.822 154.586 558.222 142.246 558.222 127.025C558.222 111.803 545.822 99.4631 530.526 99.4628Z" fill="#FDFDFD"/>
-                <path d="M848.044 254.794C831.628 254.794 818.86 250.69 809.74 242.482C800.848 234.046 796.401 222.19 796.401 206.913V114.914L796.401 74.713L796.401 73.5313V35.9107C812.818 33.1747 828.778 31.1226 844.282 29.7546V73.5313H888.743V114.914H844.282V198.021C844.282 207.825 849.754 212.727 860.698 212.727C867.083 212.727 874.379 211.245 882.587 208.281L893.189 244.534C878.597 251.374 863.548 254.794 848.044 254.794Z" fill="#FDFDFD"/>
-                <path d="M674.049 254.794C662.877 254.794 652.047 253.653 641.559 251.373C631.298 249.093 622.52 246.015 615.224 242.139L619.67 201.099C627.422 205.887 635.972 209.763 645.321 212.727C654.669 215.691 663.447 217.173 671.655 217.173C678.951 217.173 685.335 215.805 690.807 213.069C696.279 210.333 699.015 206.115 699.015 200.415C699.015 194.943 696.051 190.953 690.123 188.444C684.423 185.936 675.531 182.402 663.447 177.842C658.887 176.018 653.757 173.966 648.057 171.686C642.585 169.406 637.34 166.442 632.324 162.794C627.308 158.918 623.204 154.016 620.012 148.088C616.82 141.932 615.224 134.294 615.224 125.174C615.224 112.861 618.302 102.601 624.458 94.3931C630.842 85.9569 639.506 79.5728 650.451 75.2408C661.395 70.9087 673.707 68.7427 687.387 68.7427C696.735 68.7427 705.856 69.6547 714.748 71.4787C723.868 73.3028 732.532 75.6968 740.74 78.6608L734.242 119.359C727.63 115.483 720.106 112.405 711.67 110.125C703.461 107.617 695.709 106.363 688.413 106.363C681.345 106.363 675.417 107.617 670.629 110.125C666.069 112.405 663.789 116.053 663.789 121.069C663.789 125.174 665.385 128.48 668.577 130.988C671.769 133.268 676.101 135.32 681.573 137.144C687.045 138.74 693.087 140.906 699.699 143.642C706.312 146.15 713.266 149.342 720.562 153.218C728.086 157.094 734.47 162.566 739.714 169.634C744.958 176.702 747.58 186.392 747.58 198.705C747.58 211.701 744.274 222.417 737.662 230.853C731.278 239.061 722.5 245.103 711.328 248.979C700.383 252.855 687.957 254.794 674.049 254.794Z" fill="#FDFDFD"/>
-                <path d="M205.938 249.664V0H254.16V99.1815C261.456 88.4653 269.664 80.7132 278.785 75.9251C287.905 71.1371 298.279 68.743 309.907 68.743C328.831 68.743 343.652 74.4431 354.368 85.8433C365.084 97.0155 370.442 112.634 370.442 132.698V249.664H322.219V140.222C322.219 130.874 319.939 123.692 315.379 118.676C310.819 113.66 304.663 111.152 296.911 111.152C288.247 111.152 280.039 114.116 272.286 120.044C264.762 125.972 258.72 133.61 254.16 142.958V249.664H205.938Z" fill="#FDFDFD"/>
-                <path d="M65.665 327.299C57.4569 327.299 48.1087 326.729 37.6206 325.589C27.3604 324.449 16.8723 322.397 6.15609 319.432L15.3902 277.024C24.7384 279.76 33.9725 282.04 43.0927 283.864C52.2128 285.688 61.2189 286.6 70.1111 286.6C81.9672 286.6 90.9734 284.662 97.1295 280.786C103.514 277.138 107.96 271.324 110.468 263.344C112.976 255.364 114.458 244.989 114.914 232.221H113.888C100.892 247.269 84.2473 254.794 63.955 254.794C43.8907 254.794 28.1584 247.269 16.7583 232.221C5.58609 216.945 0 195.855 0 168.95C0 136.346 8.43613 111.493 25.3084 94.3931C42.1806 77.2928 66.121 68.7427 97.1295 68.7427C106.478 68.7427 116.624 69.5407 127.568 71.1367C138.512 72.5047 149.798 74.4428 161.426 76.9508C161.654 94.5071 161.768 112.177 161.768 129.962C161.996 147.746 162.11 165.416 162.11 182.972C162.11 190.953 162.11 198.933 162.11 206.913C162.11 214.893 161.996 222.873 161.768 230.853C161.312 263.23 153.218 287.398 137.486 303.358C121.754 319.318 97.8135 327.299 65.665 327.299ZM76.6092 212.727C83.9053 212.727 90.6314 210.105 96.7875 204.861C103.172 199.389 108.872 191.979 113.888 182.63V113.887C106.364 111.835 99.0675 110.809 91.9994 110.809C77.4072 110.809 66.463 115.483 59.1669 124.832C51.8708 134.18 48.2227 147.746 48.2227 165.53C48.2227 180.35 50.6168 191.979 55.4048 200.415C60.4209 208.623 67.489 212.727 76.6092 212.727Z" fill="#FDFDFD"/>
-            </svg>
-        </div>
-
-        <!-- Tools: Watch | Meeting | Auto-ler | Visibility -->
-        <button class="compact-btn" :class="{ 'active-tertiary': watchEnabled, locked: apiKeyMissing }"
-                @click="toggleWatch()"
-                :disabled="apiKeyMissing"
-                data-tooltip-pos="below"
-                :data-tooltip="apiKeyMissing ? apiLockTooltip : (watchEnabled ? 'Parar de vigiar' : 'Vigiar a tela')">
-            <svg viewBox="0 0 14 14" fill="none">
-                <circle cx="7" cy="7" r="1.3" fill="currentColor"/>
-                <circle cx="7" cy="7" r="3" stroke="currentColor" stroke-width="1.1"/>
-                <circle cx="7" cy="7" r="5" stroke="currentColor" stroke-width="1" stroke-opacity="0.55"/>
-            </svg>
-            <span class="tool-dot" x-show="watchEnabled"></span>
-            <span class="tool-lock" x-show="apiKeyMissing"></span>
-        </button>
-
-        <button class="compact-btn" :class="{ recording: meetingRunning, processing: meetingProcessing, locked: apiKeyMissing }"
-                @click="toggleMeeting()" :disabled="meetingProcessing || apiKeyMissing"
-                data-tooltip-pos="below"
-                :data-tooltip="apiKeyMissing ? apiLockTooltip : meetingTooltip">
-            <svg viewBox="0 0 14 14" fill="none">
-                <rect x="5" y="2" width="4" height="6" rx="2" stroke="currentColor" stroke-width="1.2"/>
-                <path d="M3.5 7a3.5 3.5 0 007 0M7 10.5v2M5.5 12.5h3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
-            </svg>
-            <span class="tool-dot tool-dot-rec" x-show="meetingRunning"></span>
-            <span class="tool-lock" x-show="apiKeyMissing"></span>
-        </button>
-
-        <button class="compact-btn" :class="{ processing: cloneRunning }"
-                @click="openCloneModal()"
-                data-tooltip-pos="below"
-                :data-tooltip="cloneRunning ? 'Clonagem em andamento — clique para abrir' : 'Clonar página web (URL → HTML + assets offline)'">
-            <svg viewBox="0 0 14 14" fill="none">
-                <path d="M5 9L2.5 6.5l2.5-2.5M9 5l2.5 2.5L9 10M7 2.5L6 11.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-            <span class="tool-dot tool-dot-rec" x-show="cloneRunning"></span>
-        </button>
-
-        <button class="compact-btn" :class="{ 'active-tertiary': autoSpeak }"
-                @click="toggleAutoSpeak()"
-                data-tooltip-pos="below"
-                :data-tooltip="autoSpeak ? 'Auto-ler ATIVO' : 'Ativar leitura automática'">
-            <svg viewBox="0 0 14 14" fill="none"><path d="M5 5H3a1 1 0 00-1 1v2a1 1 0 001 1h2l3 2.5v-9L5 5z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><path d="M10.5 5.2c.8.7.8 2.9 0 3.6" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
-        </button>
-
-        <button class="compact-btn" :class="{ 'active-tertiary': captureVisible }"
-                @click="toggleCaptureVisibility()"
-                data-tooltip-pos="below"
-                :data-tooltip="captureVisible ? 'Ghost visível em screen share' : 'Ghost invisível em screen share'">
-            <svg x-show="!captureVisible" viewBox="0 0 14 14" fill="none"><path d="M1.5 1.5l11 11M5.5 5.5a2 2 0 002.8 2.8M3 3.2C1.7 4.3 1 5.6 1 7c0 1.7 1.7 4.4 6 4.4 1.2 0 2.1-.2 2.9-.5M5 2C5.6 1.8 6.3 1.6 7 1.6c4.3 0 6 3 6 4.4 0 1-.5 2-1.5 3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
-            <svg x-show="captureVisible" viewBox="0 0 14 14" fill="none"><path d="M1 7s1.7-4.4 6-4.4S13 7 13 7s-1.7 4.4-6 4.4S1 7 1 7z" stroke="currentColor" stroke-width="1.2"/><circle cx="7" cy="7" r="1.8" stroke="currentColor" stroke-width="1.2"/></svg>
-        </button>
-
-        <span class="compact-divider"></span>
-
-        <button class="compact-btn" @click="dockFromCompact()" data-tooltip-pos="below" data-tooltip="Encolher para o canto">
-            <svg viewBox="0 0 14 14" fill="none"><path d="M3 7h6M7 4l3 3-3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 2v10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-        </button>
-        <button class="compact-btn" @click="exitCompact()" data-tooltip-pos="below" data-tooltip="Voltar ao tamanho normal">
-            <svg viewBox="0 0 14 14" fill="none"><path d="M3 7h8M5 4l-2 3 2 3M9 4l2 3-2 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        </button>
-    </div>
+    <!-- (compact bar removed: minimize now goes straight to window mode) -->
 
 
     <!-- HEADER (Windows 11 title bar) -->
@@ -123,106 +51,136 @@
             <path d="M65.665 327.299C57.4569 327.299 48.1087 326.729 37.6206 325.589C27.3604 324.449 16.8723 322.397 6.15609 319.432L15.3902 277.024C24.7384 279.76 33.9725 282.04 43.0927 283.864C52.2128 285.688 61.2189 286.6 70.1111 286.6C81.9672 286.6 90.9734 284.662 97.1295 280.786C103.514 277.138 107.96 271.324 110.468 263.344C112.976 255.364 114.458 244.989 114.914 232.221H113.888C100.892 247.269 84.2473 254.794 63.955 254.794C43.8907 254.794 28.1584 247.269 16.7583 232.221C5.58609 216.945 0 195.855 0 168.95C0 136.346 8.43613 111.493 25.3084 94.3931C42.1806 77.2928 66.121 68.7427 97.1295 68.7427C106.478 68.7427 116.624 69.5407 127.568 71.1367C138.512 72.5047 149.798 74.4428 161.426 76.9508C161.654 94.5071 161.768 112.177 161.768 129.962C161.996 147.746 162.11 165.416 162.11 182.972C162.11 190.953 162.11 198.933 162.11 206.913C162.11 214.893 161.996 222.873 161.768 230.853C161.312 263.23 153.218 287.398 137.486 303.358C121.754 319.318 97.8135 327.299 65.665 327.299ZM76.6092 212.727C83.9053 212.727 90.6314 210.105 96.7875 204.861C103.172 199.389 108.872 191.979 113.888 182.63V113.887C106.364 111.835 99.0675 110.809 91.9994 110.809C77.4072 110.809 66.463 115.483 59.1669 124.832C51.8708 134.18 48.2227 147.746 48.2227 165.53C48.2227 180.35 50.6168 191.979 55.4048 200.415C60.4209 208.623 67.489 212.727 76.6092 212.727Z" fill="#FDFDFD"/>
         </svg>
         <div class="header-actions">
-            <!-- Toolbar: features (Vigiar, Reunião, Auto-ler) + visibilidade + ações -->
+            <!-- Toolbar: 3 sections (features / visibility / actions) each with
+                 labels that only render in maximized mode. -->
             <div class="header-action-group">
-                <!-- Features toolbar -->
-                <button class="tool-btn"
-                        :class="{ active: watchEnabled, locked: apiKeyMissing }"
-                        @click="toggleWatch()"
-                        :disabled="apiKeyMissing"
-                        data-tooltip-pos="below"
-                        :data-tooltip="apiKeyMissing ? apiLockTooltip : (watchEnabled ? 'Parar de vigiar a tela' : 'Vigiar a tela continuamente')">
-                    <svg viewBox="0 0 16 16" fill="none">
-                        <circle cx="8" cy="8" r="1.6" fill="currentColor"/>
-                        <circle cx="8" cy="8" r="3.5" stroke="currentColor" stroke-width="1.2"/>
-                        <circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.1" stroke-opacity="0.55"/>
-                    </svg>
-                    <span class="tool-dot" x-show="watchEnabled"></span>
-                    <span class="tool-lock" x-show="apiKeyMissing"></span>
-                </button>
 
-                <button class="tool-btn"
-                        :class="{ recording: meetingRunning, processing: meetingProcessing, locked: apiKeyMissing }"
-                        @click="toggleMeeting()"
-                        :disabled="meetingProcessing || apiKeyMissing"
-                        data-tooltip-pos="below"
-                        :data-tooltip="apiKeyMissing ? apiLockTooltip : meetingTooltip">
-                    <svg viewBox="0 0 16 16" fill="none">
-                        <rect x="6" y="2" width="4" height="7" rx="2" stroke="currentColor" stroke-width="1.3"/>
-                        <path d="M4 8a4 4 0 008 0M8 12v2M6 14h4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
-                    </svg>
-                    <span class="tool-dot tool-dot-rec" x-show="meetingRunning"></span>
-                    <span class="tool-lock" x-show="apiKeyMissing"></span>
-                </button>
+                <!-- ── SECTION: FEATURES ────────────────────────────── -->
+                <div class="tool-section">
+                    <span class="tool-section-label">Features</span>
+                    <div class="tool-section-row">
+                        <button class="tool-btn" data-label="Vigiar"
+                                :class="{ active: watchEnabled, locked: apiKeyMissing }"
+                                @click="toggleWatch()"
+                                :disabled="apiKeyMissing"
+                                data-tooltip-pos="below"
+                                :data-tooltip="apiKeyMissing ? apiLockTooltip : (watchEnabled ? 'Parar de vigiar a tela' : 'Vigiar a tela continuamente')">
+                            <svg viewBox="0 0 16 16" fill="none">
+                                <circle cx="8" cy="8" r="1.6" fill="currentColor"/>
+                                <circle cx="8" cy="8" r="3.5" stroke="currentColor" stroke-width="1.2"/>
+                                <circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.1" stroke-opacity="0.55"/>
+                            </svg>
+                            <span class="tool-dot" x-show="watchEnabled"></span>
+                            <span class="tool-lock" x-show="apiKeyMissing"></span>
+                        </button>
 
-                <button class="tool-btn"
-                        :class="{ processing: cloneRunning }"
-                        @click="openCloneModal()"
-                        data-tooltip-pos="below"
-                        :data-tooltip="cloneRunning ? 'Clonagem em andamento — clique para ver progresso' : 'Clonar página web (URL → HTML + assets offline)'">
-                    <svg viewBox="0 0 16 16" fill="none">
-                        <path d="M6 10L3 7l3-3M10 6l3 3-3 3M8 2.5L7 13.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
-                    </svg>
-                    <span class="tool-dot tool-dot-rec" x-show="cloneRunning"></span>
-                </button>
+                        <button class="tool-btn" data-label="Reunião"
+                                :class="{ recording: meetingRunning, processing: meetingProcessing, locked: apiKeyMissing }"
+                                @click="toggleMeeting()"
+                                :disabled="meetingProcessing || apiKeyMissing"
+                                data-tooltip-pos="below"
+                                :data-tooltip="apiKeyMissing ? apiLockTooltip : meetingTooltip">
+                            <svg viewBox="0 0 16 16" fill="none">
+                                <rect x="6" y="2" width="4" height="7" rx="2" stroke="currentColor" stroke-width="1.3"/>
+                                <path d="M4 8a4 4 0 008 0M8 12v2M6 14h4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+                            </svg>
+                            <span class="tool-dot tool-dot-rec" x-show="meetingRunning"></span>
+                            <span class="tool-lock" x-show="apiKeyMissing"></span>
+                        </button>
 
-                <button class="tool-btn"
-                        :class="{ active: autoSpeak }"
-                        @click="toggleAutoSpeak()"
-                        data-tooltip-pos="below"
-                        :data-tooltip="autoSpeak ? 'Leitura automática ATIVA' : 'Ativar leitura automática'">
-                    <svg viewBox="0 0 16 16" fill="none">
-                        <path d="M6 5H3.5a1 1 0 00-1 1v4a1 1 0 001 1H6l3.5 3V2L6 5z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/>
-                        <path d="M12 6c1 .8 1 3.2 0 4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
-                        <path d="M13.5 4c2 1.4 2 6.2 0 7.6" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
-                    </svg>
-                </button>
+                        <button class="tool-btn" data-label="Clonar"
+                                :class="{ processing: cloneRunning }"
+                                @click="openCloneModal()"
+                                data-tooltip-pos="below"
+                                :data-tooltip="cloneRunning ? 'Clonagem em andamento — clique para ver progresso' : 'Clonar página web (URL → HTML + assets offline)'">
+                            <svg viewBox="0 0 16 16" fill="none">
+                                <path d="M6 10L3 7l3-3M10 6l3 3-3 3M8 2.5L7 13.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                            <span class="tool-dot tool-dot-rec" x-show="cloneRunning"></span>
+                        </button>
 
-                <button class="tool-btn"
-                        :class="{ active: captureVisible }"
-                        @click="toggleCaptureVisibility()"
-                        data-tooltip-pos="below"
-                        :data-tooltip="captureVisible ? 'Ghost visível em screen share' : 'Ghost invisível em screen share'">
-                    <svg x-show="!captureVisible" viewBox="0 0 16 16" fill="none">
-                        <path d="M2 2l12 12M6.5 6.5a2 2 0 002.8 2.8M3.5 3.5C1.8 4.8 1 6.5 1 8c0 2 2 5 7 5 1.3 0 2.4-.2 3.4-.6M5.5 2.3C6.3 2.1 7.1 2 8 2c5 0 7 3 7 5 0 1.1-.6 2.4-1.7 3.4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
-                    </svg>
-                    <svg x-show="captureVisible" viewBox="0 0 16 16" fill="none">
-                        <path d="M1 8s2-5 7-5 7 5 7 5-2 5-7 5-7-5-7-5z" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
-                        <circle cx="8" cy="8" r="2" stroke="currentColor" stroke-width="1.3"/>
-                    </svg>
-                </button>
+                        <button class="tool-btn" data-label="Auto-ler"
+                                :class="{ active: autoSpeak }"
+                                @click="toggleAutoSpeak()"
+                                data-tooltip-pos="below"
+                                :data-tooltip="autoSpeak ? 'Leitura automática ATIVA' : 'Ativar leitura automática'">
+                            <svg viewBox="0 0 16 16" fill="none">
+                                <path d="M6 5H3.5a1 1 0 00-1 1v4a1 1 0 001 1H6l3.5 3V2L6 5z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/>
+                                <path d="M12 6c1 .8 1 3.2 0 4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+                                <path d="M13.5 4c2 1.4 2 6.2 0 7.6" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
 
-                <span class="tool-divider"></span>
+                <span class="tool-section-divider"></span>
 
-                <button class="tool-btn" @click="openHistoryModal()" data-tooltip-pos="below" data-tooltip="Histórico de conversas">
-                    <svg viewBox="0 0 16 16" fill="none">
-                        <circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.3"/>
-                        <path d="M8 4.5V8l2.5 1.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
-                    </svg>
-                </button>
+                <!-- ── SECTION: VISIBILIDADE ──────────────────────────── -->
+                <div class="tool-section">
+                    <span class="tool-section-label">Visibilidade</span>
+                    <div class="tool-section-row">
+                        <button class="tool-btn" data-label="Invisível"
+                                :class="{ active: captureVisible }"
+                                @click="toggleCaptureVisibility()"
+                                data-tooltip-pos="below"
+                                :data-tooltip="captureVisible ? 'Ghost visível em screen share' : 'Ghost invisível em screen share'">
+                            <svg x-show="!captureVisible" viewBox="0 0 16 16" fill="none">
+                                <path d="M2 2l12 12M6.5 6.5a2 2 0 002.8 2.8M3.5 3.5C1.8 4.8 1 6.5 1 8c0 2 2 5 7 5 1.3 0 2.4-.2 3.4-.6M5.5 2.3C6.3 2.1 7.1 2 8 2c5 0 7 3 7 5 0 1.1-.6 2.4-1.7 3.4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+                            </svg>
+                            <svg x-show="captureVisible" viewBox="0 0 16 16" fill="none">
+                                <path d="M1 8s2-5 7-5 7 5 7 5-2 5-7 5-7-5-7-5z" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+                                <circle cx="8" cy="8" r="2" stroke="currentColor" stroke-width="1.3"/>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
 
-                <button class="tool-btn" @click="shortcutsModalOpen = true" data-tooltip-pos="below" data-tooltip="Atalhos de teclado">
-                    <svg viewBox="0 0 16 16" fill="none">
-                        <rect x="1.5" y="4" width="13" height="8" rx="1.5" stroke="currentColor" stroke-width="1.2"/>
-                        <path d="M4 7h0.1M6 7h0.1M8 7h0.1M10 7h0.1M12 7h0.1M4 9h0.1M5.5 10.5h5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
-                    </svg>
-                </button>
+                <span class="tool-section-divider"></span>
 
-                <button class="tool-btn" @click="settingsModalOpen = true; loadSettings()" data-tooltip-pos="below" data-tooltip="Configurações">
-                    <svg viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="2.2" stroke="currentColor" stroke-width="1.3"/><path d="M8 1.5v1.8M8 12.7v1.8M14.5 8h-1.8M3.3 8H1.5M12.6 3.4l-1.3 1.3M4.7 11.3l-1.3 1.3M12.6 12.6l-1.3-1.3M4.7 4.7L3.4 3.4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
-                </button>
-                <button class="tool-btn" @click="newConversation()" data-tooltip-pos="below" data-tooltip="Nova conversa">
-                    <svg viewBox="0 0 16 16" fill="none"><path d="M2.5 4a1.5 1.5 0 011.5-1.5h8A1.5 1.5 0 0113.5 4v5A1.5 1.5 0 0112 10.5H7l-3 2.5V10.5H4A1.5 1.5 0 012.5 9V4z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M8 5.5v3M6.5 7h3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
-                </button>
+                <!-- ── SECTION: AÇÕES ────────────────────────────────── -->
+                <div class="tool-section">
+                    <span class="tool-section-label">Ações</span>
+                    <div class="tool-section-row">
+                        <button class="tool-btn" data-label="Histórico" @click="openHistoryModal()" data-tooltip-pos="below" data-tooltip="Histórico de conversas">
+                            <svg viewBox="0 0 16 16" fill="none">
+                                <circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.3"/>
+                                <path d="M8 4.5V8l2.5 1.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                        </button>
+
+                        <button class="tool-btn" data-label="Atalhos" @click="shortcutsModalOpen = true" data-tooltip-pos="below" data-tooltip="Atalhos de teclado">
+                            <svg viewBox="0 0 16 16" fill="none">
+                                <rect x="1.5" y="4" width="13" height="8" rx="1.5" stroke="currentColor" stroke-width="1.2"/>
+                                <path d="M4 7h0.1M6 7h0.1M8 7h0.1M10 7h0.1M12 7h0.1M4 9h0.1M5.5 10.5h5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+                            </svg>
+                        </button>
+
+                        <button class="tool-btn" data-label="Config" @click="settingsModalOpen = true; loadSettings()" data-tooltip-pos="below" data-tooltip="Configurações">
+                            <svg viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="2.2" stroke="currentColor" stroke-width="1.3"/><path d="M8 1.5v1.8M8 12.7v1.8M14.5 8h-1.8M3.3 8H1.5M12.6 3.4l-1.3 1.3M4.7 11.3l-1.3 1.3M12.6 12.6l-1.3-1.3M4.7 4.7L3.4 3.4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+                        </button>
+
+                        <button class="tool-btn" data-label="Nova" @click="newConversation()" data-tooltip-pos="below" data-tooltip="Nova conversa">
+                            <svg viewBox="0 0 16 16" fill="none"><path d="M2.5 4a1.5 1.5 0 011.5-1.5h8A1.5 1.5 0 0113.5 4v5A1.5 1.5 0 0112 10.5H7l-3 2.5V10.5H4A1.5 1.5 0 012.5 9V4z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M8 5.5v3M6.5 7h3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+                        </button>
+                    </div>
+                </div>
+
             </div>
 
-            <!-- Windows 11 style titlebar controls (dock | minimize | close) -->
+            <!-- Windows 11 style titlebar controls (dock | minimize/maximize | close) -->
             <div class="header-window-controls">
                 <button class="btn-titlebar" @click="dockToEdge()" data-tooltip-pos="below" data-tooltip="Encolher para o canto">
                     <svg viewBox="0 0 12 12" fill="none"><path d="M2 6h5M6 3l3 3-3 3" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"/><path d="M10.5 2v8" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>
                 </button>
-                <button class="btn-titlebar" @click="enterCompact()" data-tooltip-pos="below" data-tooltip="Minimizar (barra no rodapé)">
+                <!-- Minimize to 580x720 window (only visible when maximized) -->
+                <button class="btn-titlebar" x-show="maximizedMode"
+                        @click="exitMaximized()" data-tooltip-pos="below" data-tooltip="Minimizar para janela">
                     <svg viewBox="0 0 12 12" fill="none"><path d="M2.5 6.5h7" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>
+                </button>
+                <!-- Maximize back to full work area (only visible when in window mode) -->
+                <button class="btn-titlebar" x-show="!maximizedMode"
+                        @click="enterMaximized()" data-tooltip-pos="below" data-tooltip="Maximizar (tela inteira)">
+                    <svg viewBox="0 0 12 12" fill="none"><rect x="2.5" y="2.5" width="7" height="7" stroke="currentColor" stroke-width="1.1" fill="none"/></svg>
                 </button>
                 <button class="btn-titlebar btn-close" @click="closeApp()" data-tooltip-pos="below" data-tooltip="Fechar">
                     <svg viewBox="0 0 12 12" fill="none"><path d="M2.5 2.5l7 7M9.5 2.5l-7 7" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>

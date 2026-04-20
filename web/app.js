@@ -23,7 +23,12 @@ function ghostApp() {
         statusMessage: '',
         _blurTimeout: null,
         docked: false,
-        compactMode: false,
+        // App starts in maximized mode (fills the work area of the monitor).
+        // User can click "minimize" to go to window mode (580x720), or "dock"
+        // to shrink to a 56x56 icon on the edge. There's no more "compact bar"
+        // mode — it was replaced by window mode per user request.
+        maximizedMode: true,
+        compactMode: false,  // kept as harmless dead state; all triggers removed from UI
         kbdCapture: false,
         captureVisible: false,
         settingsModalOpen: false,
@@ -917,16 +922,12 @@ function ghostApp() {
             }
         },
 
-        async dockFromCompact() {
-            // Exit compact first to restore size, then dock to edge
-            if (this.compactMode) {
-                await window.pywebview.api.exit_compact_bar();
-                this.compactMode = false;
-            }
-            await this.dockToEdge();
-        },
-
         async dockToEdge() {
+            // If maximized, exit first so saved rect is preserved properly
+            if (this.maximizedMode) {
+                await window.pywebview.api.exit_maximized();
+                this.maximizedMode = false;
+            }
             await window.pywebview.api.minimize_to_edge();
             this.docked = true;
         },
@@ -1074,17 +1075,21 @@ function ghostApp() {
             }
         },
 
-        async enterCompact() {
-            await window.pywebview.api.enter_compact_bar();
-            this.compactMode = true;
-            // Open the popup alongside and sync messages
-            this._syncPopup();
+        async enterMaximized() {
+            await window.pywebview.api.enter_maximized();
+            this.maximizedMode = true;
+            this.docked = false;
         },
 
-        async exitCompact() {
-            await window.pywebview.api.exit_compact_bar();
-            this.compactMode = false;
+        async exitMaximized() {
+            // Goes from maximized (fills work area) → window (580x720).
+            await window.pywebview.api.exit_maximized();
+            this.maximizedMode = false;
         },
+
+        // Legacy: kept as no-ops for any leftover HTML ref (deleted from UI).
+        async enterCompact() {},
+        async exitCompact() {},
 
         _syncPopup() {
             if (!this.compactMode) return;

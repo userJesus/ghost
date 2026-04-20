@@ -107,32 +107,14 @@ def _apply_window_tweaks(api: GhostAPI, init_x: int = 100, init_y: int = 100,
         if hwnd:
             api.set_hwnd(hwnd)
             print(f"[init] HWND={hwnd} (after {attempt + 1} attempts)", flush=True)
-            # Center the window on the primary monitor work area
-            # WITHOUT changing its size (pywebview handles DPI scaling)
+            # Enter maximized mode on first boot (fills the work area of the
+            # primary monitor, excluding the taskbar). User can click the
+            # "minimize" button to go to 580x720 window mode.
             try:
-                import win32api
-                import win32gui
-                # Read the window's actual size (DPI-scaled by pywebview)
-                rect = win32gui.GetWindowRect(hwnd)
-                cur_w = rect[2] - rect[0]
-                cur_h = rect[3] - rect[1]
-                # Primary monitor work area via MonitorFromPoint
-                import win32con as _wc
-                hmon = win32api.MonitorFromPoint((0, 0), _wc.MONITOR_DEFAULTTOPRIMARY)
-                info = win32api.GetMonitorInfo(hmon)
-                work = info.get("Work", (0, 0, 1920, 1080))
-                wl, wt, wr, wb = work
-                cx = wl + ((wr - wl) - cur_w) // 2
-                cy = wt + ((wb - wt) - cur_h) // 2
-
-                SWP_NOSIZE = 0x0001
-                SWP_NOZORDER = 0x0004
-                SWP_NOACTIVATE = 0x0010
-                win32gui.SetWindowPos(hwnd, 0, cx, cy, 0, 0,
-                                      SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE)
-                print(f"[init] centered at {cx},{cy} (size {cur_w}x{cur_h}, work={work})", flush=True)
+                result = api.enter_maximized()
+                print(f"[init] maximized: {result}", flush=True)
             except Exception as e:
-                print(f"[init] center failed: {e}", flush=True)
+                print(f"[init] enter_maximized failed: {e}", flush=True)
             print(f"[init] hide_from_capture={hide_from_capture(hwnd, True)}", flush=True)
             print(f"[init] hide_from_taskbar={hide_from_taskbar(hwnd)}", flush=True)
             try:
