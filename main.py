@@ -362,6 +362,36 @@ def _preflight_cleanup_webview2() -> None:
     # down in ~100-300ms on modern Windows. No polling needed.
     time.sleep(0.6)
 
+    # Orphan-cache sweep: pywebview creates a fresh `%TEMP%\tmp<random>\EBWebView`
+    # folder per session via tempfile.mkdtemp and never removes it. Over time
+    # (crashes, force-kills, dev restarts) these accumulate — we've seen 200+
+    # folders pile up, each ~50-80MB, which besides wasting disk actually starts
+    # slowing WebView2 initialization (the runtime apparently scans/walks temp).
+    # Safe to nuke now: we just killed every msedgewebview2 process above, so
+    # nothing holds locks on these dirs. We're conservative and only delete
+    # folders that (a) match the tempfile mkdtemp pattern and (b) contain an
+    # EBWebView subdir — anyone else's tmp stays untouched.
+    try:
+        import glob
+        import shutil
+        temp_root = os.environ.get("TEMP") or os.environ.get("TMP")
+        if temp_root and os.path.isdir(temp_root):
+            swept = 0
+            for candidate in glob.glob(os.path.join(temp_root, "tmp*")):
+                # Only act on directories that look like pywebview's WebView2
+                # UserData temps — presence of the EBWebView child proves it.
+                if not os.path.isdir(os.path.join(candidate, "EBWebView")):
+                    continue
+                try:
+                    shutil.rmtree(candidate, ignore_errors=True)
+                    swept += 1
+                except Exception:
+                    pass
+            if swept:
+                _slog(f"preflight: swept {swept} orphan WebView2 cache dir(s)")
+    except Exception as e:
+        _slog(f"preflight: cache sweep error (non-fatal): {e}")
+
 
 def _check_webview2_runtime() -> bool:
     """Return True if the WebView2 runtime is installed. If not, show a
@@ -437,27 +467,58 @@ def main():
         api = GhostAPI()
         _watch_show_event_windows(lambda: api._hwnd)
 
-        # Open the main window already sized to the primary monitor's work area
-        # (maximized default). Doing this at create_window time — rather than
-        # resizing later via enter_maximized — avoids a race where pywebview's
-        # internal state reapplies the initial width/height after our resize
-        # finishes, leaving the window stuck at 580x720 even though the log
-        # showed a successful maximize.
+        # Pre-size the window to the monitor's work area (taskbar excluded),
+        # with a small "breathing" margin all around so the app feels like a
+        # framed window rather than hard-edged fullscreen. Two wrinkles handled
+        # here:
+        #   1. DPI scaling — GetMonitorInfo returns physical pixels. pywebview's
+        #      create_window expects LOGICAL pixels (DIPs). On a 125/150/200%
+        #      scaled HiDPI screen the two differ, and passing physical values
+        #      makes the window overflow the display. We compute the DPI scale
+        #      via GetDeviceCaps(LOGPIXELSX) and divide to get logical units.
+        #   2. Taskbar — SW_MAXIMIZE on a frameless window (WS_POPUP style)
+        #      covers the taskbar because there's no non-client area for
+        #      Windows to snap against. Sizing to the WORK area rect explicitly
+        #      keeps the taskbar visible, which is what the user expects when
+        #      they say "maximized".
+        # The margin ("respiros") is applied symmetrically around the work
+        # area so the window doesn't press flush against the screen edges.
+        EDGE_MARGIN = 16
+        # 740x1000 — restored-window fallback. Taller than wide for a
+        # rectangular feel. Used by exit_maximized when there's no prior
+        # saved rect.
+        init_w, init_h = 740, 1000
+        init_x, init_y = 100, 100
         try:
+            import ctypes
             import win32api
             import win32con as _wc
+            _hdc = ctypes.windll.user32.GetDC(None)
+            _dpi = ctypes.windll.gdi32.GetDeviceCaps(_hdc, 88)  # LOGPIXELSX
+            ctypes.windll.user32.ReleaseDC(None, _hdc)
+            _scale = (_dpi / 96.0) if _dpi > 0 else 1.0
+
             _hmon = win32api.MonitorFromPoint((0, 0), _wc.MONITOR_DEFAULTTOPRIMARY)
             _info = win32api.GetMonitorInfo(_hmon)
             _wl, _wt, _wr, _wb = _info.get("Work", (0, 0, 1920, 1080))
-            init_x, init_y = _wl, _wt
-            init_w, init_h = _wr - _wl, _wb - _wt
-            _slog(f"initial window size = full work area {init_w}x{init_h} at ({init_x},{init_y})")
+            # Convert physical work-area pixels → logical DIPs for pywebview
+            lx = int(_wl / _scale)
+            ly = int(_wt / _scale)
+            lw = int((_wr - _wl) / _scale)
+            lh = int((_wb - _wt) / _scale)
+            # Breathing-room margin (respiros), symmetric
+            init_x = lx + EDGE_MARGIN
+            init_y = ly + EDGE_MARGIN
+            init_w = max(720, lw - EDGE_MARGIN * 2)
+            init_h = max(600, lh - EDGE_MARGIN * 2)
+            _slog(
+                f"work area (physical) {_wr - _wl}x{_wb - _wt} @ dpi={_dpi} scale={_scale:.2f} "
+                f"→ logical window {init_w}x{init_h} at ({init_x},{init_y}) [margin={EDGE_MARGIN}]"
+            )
         except Exception as e:
-            _slog(f"work area query failed ({e}), falling back to 580x720")
-            init_w, init_h = 580, 720
-            init_x, init_y = 100, 100
+            _slog(f"work area / DPI query failed ({e}), falling back to 720x720")
 
-        _slog("creating main window")
+        _slog("creating main window (pre-sized to logical work area)")
         window = webview.create_window(
             "Ghost",
             str(WEB_INDEX),
@@ -516,7 +577,7 @@ def main():
         api.set_dropdown_window(dropdown_win)
 
         threading.Thread(target=_apply_window_tweaks,
-                         args=(api, init_x, init_y, init_w, init_h),
+                         args=(api, 100, 100, init_w, init_h),
                          daemon=True).start()
 
         debug_mode = "--debug" in sys.argv

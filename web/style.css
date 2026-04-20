@@ -550,6 +550,12 @@ input, textarea, button, select {
     -webkit-user-select: none;
     user-select: none;
 }
+
+/* Logo only in maximized mode (sidebar top). Window mode keeps a lean
+   header with just the toolbar + titlebar controls. */
+.app:not(.maximized) .brand-logo {
+    display: none;
+}
 .brand-logo-compact {
     height: 14px;
 }
@@ -761,6 +767,16 @@ input, textarea, button, select {
     flex-shrink: 0;
 }
 
+/* Window (non-maximized) mode used to have ONE divider between the
+   feature/visibility cluster and the actions cluster. The section rewrite
+   introduced a second divider (between Features and Visibilidade) which
+   changed the horizontal rhythm. Hide the first divider in window mode so
+   the toolbar reads exactly like it did pre-sidebar-refactor. Maximized mode
+   restores both dividers (handled below under .app.maximized rules). */
+.app:not(.maximized) .header-action-group > .tool-section-divider:first-of-type {
+    display: none;
+}
+
 /* ============ MAXIMIZED MODE — left sidebar layout (ChatGPT-style) ============
    In maximized mode the window fills the monitor work area, so we repurpose
    the header into a LEFT SIDEBAR. Brand + tool sections stack vertically in
@@ -822,12 +838,23 @@ input, textarea, button, select {
     gap: 18px;
 }
 
-/* Window controls (dock / minimize / close) float top-right, outside the sidebar */
+/* Window controls (dock / minimize / close) float top-right of the viewport,
+   outside the sidebar. `position: absolute` would be relative to the sidebar
+   (.header is itself position:absolute), which made the buttons render inside
+   the sidebar column. `fixed` pins them to the viewport so they land in the
+   actual top-right corner of the chat area. */
 .app.maximized .header-window-controls {
-    position: absolute;
+    position: fixed;
     top: 12px;
     right: 14px;
     z-index: 50;
+    /* Override the window-mode defaults so the fixed container shrinks to
+       its content instead of stretching to 100vh (which would center the
+       icons vertically in the middle of the viewport). */
+    height: auto;
+    border-left: none;
+    margin-left: 0;
+    padding-left: 0;
 }
 
 /* Tool sections stack vertically with labels + full-width buttons */
@@ -895,19 +922,31 @@ input, textarea, button, select {
     flex-shrink: 0;
 }
 
-/* Inner chat area: constrain max-width on big monitors for readability */
+/* Chat + composer fill the full available width (sidebar already consumes
+   260px on the left via .app.maximized's padding-left). On very wide screens
+   we cap the readable content at ~960px via symmetric auto padding, so text
+   stays comfortable to read while the element itself still spans edge-to-edge
+   (no dead click zones, scrollbar sits flush with the right edge). On narrow
+   widths the padding falls back to 24px so everything fits. */
 .app.maximized > main,
 .app.maximized > .chat {
-    max-width: 960px;
-    margin-left: auto;
-    margin-right: auto;
     width: 100%;
+    max-width: none;
+    padding-left: max(24px, calc((100% - 960px) / 2));
+    padding-right: max(24px, calc((100% - 960px) / 2));
 }
 .app.maximized > .composer {
-    max-width: 960px;
-    margin-left: auto;
-    margin-right: auto;
     width: 100%;
+    max-width: none;
+    padding-left: max(16px, calc((100% - 960px) / 2));
+    padding-right: max(16px, calc((100% - 960px) / 2));
+}
+
+/* Empty-state needs an explicit reference height inside a max-width-less
+   flex child; without it the vertical centering sometimes collapses and the
+   ghost icon drifts to a corner. */
+.app.maximized .empty-state {
+    min-height: 100%;
 }
 
 /* Header action icon button (Settings) */

@@ -1794,9 +1794,14 @@ class GhostAPI:
             return {"error": _log_error("stop_kb_capture", e)}
 
     def enter_maximized(self) -> dict:
-        """Fill the work area of the current monitor (like Windows "maximize"
-        but excluding the taskbar). Saves the pre-maximize rect so exit_maximized
-        restores the previous window size/position."""
+        """Fill the monitor's work area (taskbar excluded) with a small
+        breathing-room margin around the window. Uses SetWindowPos with the
+        physical work-area rect from GetMonitorInfo — SW_MAXIMIZE on a
+        frameless (WS_POPUP) window ignores the work area and covers the
+        taskbar, which is not what users expect. Physical pixels here (not
+        logical) because both GetMonitorInfo and SetWindowPos agree on the
+        physical coordinate system for a DPI-aware process; the DPI mismatch
+        only shows up when handing sizes to pywebview's create_window."""
         try:
             import win32api
             import win32con
@@ -1804,6 +1809,7 @@ class GhostAPI:
             if not self._hwnd:
                 return {"error": "No HWND"}
 
+            # Save the pre-maximize rect so exit_maximized can restore it.
             rect = win32gui.GetWindowRect(self._hwnd)
             self._saved_rect = (rect[0], rect[1], rect[2] - rect[0], rect[3] - rect[1])
 
@@ -1813,9 +1819,20 @@ class GhostAPI:
             work = info.get("Work") or (0, 0, 1920, 1080)
             wl, wt, wr, wb = work
 
-            # Fill the full work area (taskbar is already excluded)
-            x, y = wl, wt
-            w, h = wr - wl, wb - wt
+            # Breathing-room margin (physical pixels). We scale the margin by
+            # the monitor's DPI so it looks the same on HiDPI screens as on
+            # standard ones — a fixed 16px margin is barely visible at 200%.
+            import ctypes
+            _hdc = ctypes.windll.user32.GetDC(None)
+            _dpi = ctypes.windll.gdi32.GetDeviceCaps(_hdc, 88)
+            ctypes.windll.user32.ReleaseDC(None, _hdc)
+            _scale = (_dpi / 96.0) if _dpi > 0 else 1.0
+            margin = int(16 * _scale)
+
+            x = wl + margin
+            y = wt + margin
+            w = (wr - wl) - margin * 2
+            h = (wb - wt) - margin * 2
 
             SWP_NOZORDER_LOCAL = 0x0004
             SWP_NOACTIVATE_LOCAL = 0x0010
@@ -1828,22 +1845,25 @@ class GhostAPI:
             return {"error": _log_error("enter_maximized", e)}
 
     def exit_maximized(self) -> dict:
-        """Leave maximized mode and restore the saved rect, or a sane default
-        580x720 centered if no saved rect exists (e.g. first boot)."""
+        """Leave maximized mode and restore to the saved pre-maximize rect,
+        or center a 740x1000 default on the current monitor if we have no
+        saved rect (e.g., first-boot minimize click before any maximize)."""
         try:
             import win32gui
             if not self._hwnd:
                 return {"error": "No HWND"}
+
             if self._saved_rect:
                 x, y, w, h = self._saved_rect
             else:
                 monitor = self._current_monitor() or (self._monitors[0] if self._monitors else None)
                 if monitor:
-                    w, h = 580, 720
+                    w, h = 740, 1000
                     x = monitor["left"] + (monitor["width"] - w) // 2
                     y = monitor["top"] + (monitor["height"] - h) // 2
                 else:
-                    x, y, w, h = 100, 100, 580, 720
+                    x, y, w, h = 100, 100, 740, 1000
+
             SWP_NOZORDER_LOCAL = 0x0004
             SWP_NOACTIVATE_LOCAL = 0x0010
             win32gui.SetWindowPos(
@@ -1925,11 +1945,11 @@ class GhostAPI:
             else:
                 monitor = self._current_monitor() or (self._monitors[0] if self._monitors else None)
                 if monitor:
-                    w, h = 580, 720
+                    w, h = 740, 1000
                     x = monitor["left"] + (monitor["width"] - w) // 2
                     y = monitor["top"] + (monitor["height"] - h) // 2
                 else:
-                    x, y, w, h = 100, 100, 580, 720
+                    x, y, w, h = 100, 100, 740, 1000
             SWP_NOZORDER_LOCAL = 0x0004
             SWP_NOACTIVATE_LOCAL = 0x0010
             win32gui.SetWindowPos(
@@ -2048,11 +2068,11 @@ class GhostAPI:
             else:
                 monitor = self._current_monitor() or (self._monitors[0] if self._monitors else None)
                 if monitor:
-                    w, h = 580, 720
+                    w, h = 740, 1000
                     x = monitor["left"] + (monitor["width"] - w) // 2
                     y = monitor["top"] + (monitor["height"] - h) // 2
                 else:
-                    x, y, w, h = 100, 100, 580, 720
+                    x, y, w, h = 100, 100, 740, 1000
 
             SWP_NOZORDER_LOCAL = 0x0004
             SWP_NOACTIVATE_LOCAL = 0x0010
