@@ -2172,10 +2172,27 @@ class GhostAPI:
                 cmd = [sys.executable, "--region-selector"]
             else:
                 cmd = [sys.executable, "-m", "src.region_selector_cli"]
+            # Suppress the PyInstaller "unhandled exception" error dialog on
+            # the child so a broken selector doesn't block the main UI thread
+            # with a modal that only the user can dismiss. If the subprocess
+            # fails, we want it to exit quickly so busy=true clears on the JS
+            # side and the user can keep chatting.
+            CREATE_NO_WINDOW = 0x08000000
             result = subprocess.run(
-                cmd, cwd=str(ROOT), capture_output=True, text=True, timeout=120
+                cmd, cwd=str(ROOT), capture_output=True, text=True, timeout=120,
+                creationflags=CREATE_NO_WINDOW,
             )
-            if result.returncode != 0 or not result.stdout.strip():
+            # returncode 1 = user cancelled (ESC in the selector). Anything
+            # else non-zero is a genuine error — surface it to the UI so
+            # bugs don't silently look like cancellation (that's how the
+            # 1.0.29 tkinter-missing crash went undiagnosed for a release).
+            if result.returncode == 1 and not result.stdout.strip():
+                return {"cancelled": True}
+            if result.returncode != 0:
+                err = (result.stderr or "").strip()
+                _log_error("capture_area", Exception(f"subprocess rc={result.returncode}: {err[:300]}"))
+                return {"error": f"Seletor de região falhou: {err[:200] or 'erro desconhecido'}"}
+            if not result.stdout.strip():
                 return {"cancelled": True}
 
             region = json.loads(result.stdout.strip())

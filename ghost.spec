@@ -43,15 +43,26 @@ a = Analysis(
         "src.sensitive",
         "src.logging_config",
         "src.platform_adapter",
+        # Region selector runs as a subprocess (`Ghost.exe --region-selector`)
+        # so tkinter gets its own process / main thread. PyInstaller doesn't
+        # follow the Popen call chain into main.py's sub-mode dispatch, so
+        # pin both modules and tkinter here. Keep tkinter OUT of `excludes`.
+        "src.region_selector_cli",
+        "src.region_selector",
+        "tkinter",
+        "tkinter.ttk",
     ],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
     excludes=[
         # Trim things not used at runtime to keep size reasonable.
+        # IMPORTANT: do NOT add tkinter — capture_area's subprocess needs it.
+        # Excluding it shipped as a crash in 1.0.28/1.0.29 where clicking
+        # "Área" showed a traceback dialog and locked the chat input on
+        # busy=true until the dialog was dismissed.
         "matplotlib",
         "scipy",
-        "tkinter",
         "test",
         "tests",
         "pytest",
