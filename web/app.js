@@ -1640,9 +1640,13 @@ function ghostApp() {
         },
 
         async _openMeetingModal() {
-            this.setStatus('Listando janelas...');
+            this.setStatus('Listando janelas de reunião...');
             try {
-                this.availableWindows = await window.pywebview.api.list_windows() || [];
+                // Only show windows that look like a meeting app or a
+                // browser tab on a meeting platform. Prevents the user
+                // from accidentally targeting unrelated apps (editor,
+                // file manager) and capturing silent audio for 30 minutes.
+                this.availableWindows = await window.pywebview.api.list_meeting_windows() || [];
             } catch (e) {
                 this.availableWindows = [];
             }

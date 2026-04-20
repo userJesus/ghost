@@ -1353,6 +1353,138 @@ class GhostAPI:
         windows.sort(key=lambda w: w["title"].lower())
         return windows
 
+    # Process-image names for native meeting apps. Matched case-insensitively.
+    _MEETING_APP_PROCESSES = (
+        "teams.exe", "ms-teams.exe", "msteams.exe",
+        "zoom.exe", "cpthost.exe",   # zoom main + helper
+        "webex.exe", "webexmta.exe", "ciscowebex.exe", "ciscowebexstart.exe",
+        "skype.exe", "lync.exe",
+        "discord.exe",
+        "slack.exe",
+        "bluejeans.exe",
+        "gotomeeting.exe", "gotoopener.exe", "goto.exe", "gotomeet.exe",
+        "whereby.exe",
+        "meetingroomcontrol.exe",
+    )
+
+    # Substrings matched in the window title (case-insensitive). Covers both
+    # native apps that prefix their titles and browser tabs pinned to
+    # meeting-platform URLs. Keep this list focused on *meeting* contexts —
+    # generic "chrome.exe" isn't enough; we check the tab title.
+    _MEETING_TITLE_PATTERNS = (
+        "meet.google.com", "google meet",
+        "teams.microsoft.com", "microsoft teams", "teams meeting",
+        "zoom.us", "zoom meeting", "zoom.com",
+        "webex.com", "cisco webex", " | webex", "webex meeting",
+        "meet.jit.si", "jitsi meet",
+        "whereby.com", " - whereby",
+        "skype.com", "skype for business",
+        "discord",   # discord calls/huddles
+        "slack", "huddle",
+        "bluejeans.com",
+        "gotomeeting.com", "goto meeting", "goto.com/meeting",
+        "workplace.com", "workplace chat",
+        "chime.aws", "amazon chime",
+        "whatsapp web", "web.whatsapp.com",  # call on WhatsApp Web
+    )
+
+    def list_meeting_windows(self) -> list[dict]:
+        """Same as list_windows but filtered to windows that look like they
+        belong to a meeting app or a browser tab focused on a meeting
+        platform (Google Meet, Teams, Zoom, Webex, Jitsi, etc.).
+
+        Done server-side because the process-image check needs OpenProcess
+        + QueryFullProcessImageName, which is awkward from JavaScript. A
+        window passes the filter if EITHER:
+          (a) its owning process image matches _MEETING_APP_PROCESSES, OR
+          (b) its title contains one of _MEETING_TITLE_PATTERNS.
+
+        Returns the same shape as list_windows (hwnd/title/width/height)."""
+        try:
+            import ctypes
+            import win32api
+            import win32gui
+            import win32process
+        except Exception:
+            return []
+
+        my_pid = os.getpid()
+        ghost_hwnd = self._hwnd
+
+        # Resolve PID → lowercased image basename. Cache to avoid repeated
+        # OpenProcess calls for the same pid (common when a browser has many
+        # windows owned by the main process).
+        image_cache: dict[int, str] = {}
+
+        def _image_name_for(pid: int) -> str:
+            if pid in image_cache:
+                return image_cache[pid]
+            try:
+                PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+                h = ctypes.windll.kernel32.OpenProcess(
+                    PROCESS_QUERY_LIMITED_INFORMATION, False, pid
+                )
+                if not h:
+                    image_cache[pid] = ""
+                    return ""
+                try:
+                    buf = ctypes.create_unicode_buffer(520)
+                    size = ctypes.c_ulong(len(buf))
+                    ok = ctypes.windll.kernel32.QueryFullProcessImageNameW(
+                        h, 0, buf, ctypes.byref(size)
+                    )
+                    path = buf.value if ok else ""
+                finally:
+                    ctypes.windll.kernel32.CloseHandle(h)
+                name = os.path.basename(path).lower() if path else ""
+                image_cache[pid] = name
+                return name
+            except Exception:
+                image_cache[pid] = ""
+                return ""
+
+        patterns_lower = tuple(p.lower() for p in self._MEETING_TITLE_PATTERNS)
+        windows: list[dict] = []
+
+        def callback(hwnd, _):
+            try:
+                if not win32gui.IsWindowVisible(hwnd) or hwnd == ghost_hwnd:
+                    return True
+                title = win32gui.GetWindowText(hwnd)
+                if not title or len(title) < 2:
+                    return True
+                rect = win32gui.GetWindowRect(hwnd)
+                w, h_ = rect[2] - rect[0], rect[3] - rect[1]
+                if w < 100 or h_ < 100:
+                    return True
+                _, pid = win32process.GetWindowThreadProcessId(hwnd)
+                if pid == my_pid:
+                    return True
+
+                title_l = title.lower()
+                image = _image_name_for(pid)
+                is_meeting = (
+                    image in self._MEETING_APP_PROCESSES
+                    or any(pat in title_l for pat in patterns_lower)
+                )
+                if not is_meeting:
+                    return True
+
+                windows.append({
+                    "hwnd": hwnd,
+                    "title": title,
+                    "width": w,
+                    "height": h_,
+                    "process": image,
+                })
+            except Exception:
+                pass
+            return True
+
+        win32gui.EnumWindows(callback, None)
+        windows.sort(key=lambda x: x["title"].lower())
+        return windows
+
     def clear_history(self):
         self._history.clear()
         self._last_image = None

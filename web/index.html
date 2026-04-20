@@ -499,6 +499,7 @@
             <div class="meeting-qa-row">
                 <input type="text" class="meeting-qa-input"
                        x-model="meetingQuestion"
+                       @mousedown="onInputClick($event)"
                        @keydown.enter.prevent="askMeetingLive()"
                        :readonly="meetingQaAsking"
                        placeholder="Ex: o que foi decidido sobre X?">
@@ -1124,9 +1125,9 @@
                 </template>
             </div>
 
-            <div class="target-group" x-show="availableWindows.length > 0">
-                <div class="target-group-title">Janelas abertas</div>
-                <div class="target-scroll">
+            <div class="target-group">
+                <div class="target-group-title">Janelas de reunião detectadas</div>
+                <div class="target-scroll" x-show="availableWindows.length > 0">
                     <template x-for="w in availableWindows" :key="'win-' + w.hwnd">
                         <label class="target-option">
                             <input type="radio" name="mtarget"
@@ -1140,6 +1141,12 @@
                         </label>
                     </template>
                 </div>
+                <p class="modal-hint" x-show="availableWindows.length === 0"
+                   style="font-size:12px;opacity:0.75;margin:6px 2px 0;">
+                    Nenhuma janela de reunião aberta. Abra uma chamada no Google Meet,
+                    Teams, Zoom, Webex, Slack, Discord, Jitsi ou similar — ou deixe
+                    no monitor inteiro acima.
+                </p>
             </div>
         </div>
 
