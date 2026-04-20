@@ -107,14 +107,11 @@ def _apply_window_tweaks(api: GhostAPI, init_x: int = 100, init_y: int = 100,
         if hwnd:
             api.set_hwnd(hwnd)
             print(f"[init] HWND={hwnd} (after {attempt + 1} attempts)", flush=True)
-            # Enter maximized mode on first boot (fills the work area of the
-            # primary monitor, excluding the taskbar). User can click the
-            # "minimize" button to go to 580x720 window mode.
-            try:
-                result = api.enter_maximized()
-                print(f"[init] maximized: {result}", flush=True)
-            except Exception as e:
-                print(f"[init] enter_maximized failed: {e}", flush=True)
+            # Window already created at work-area size in main(). We still
+            # record the "saved rect" in the API so exit_maximized can restore
+            # to the pre-maximize 580x720 default when user clicks minimize.
+            # (Don't call enter_maximized here — pywebview's internal state
+            # races with that resize and snaps the window back to 580x720.)
             print(f"[init] hide_from_capture={hide_from_capture(hwnd, True)}", flush=True)
             print(f"[init] hide_from_taskbar={hide_from_taskbar(hwnd)}", flush=True)
             try:
@@ -435,9 +432,25 @@ def main():
         api = GhostAPI()
         _watch_show_event_windows(lambda: api._hwnd)
 
-        # Placeholder values; real centering is done via Win32 after the window exists
-        init_w, init_h = 580, 720
-        init_x, init_y = 100, 100
+        # Open the main window already sized to the primary monitor's work area
+        # (maximized default). Doing this at create_window time — rather than
+        # resizing later via enter_maximized — avoids a race where pywebview's
+        # internal state reapplies the initial width/height after our resize
+        # finishes, leaving the window stuck at 580x720 even though the log
+        # showed a successful maximize.
+        try:
+            import win32api
+            import win32con as _wc
+            _hmon = win32api.MonitorFromPoint((0, 0), _wc.MONITOR_DEFAULTTOPRIMARY)
+            _info = win32api.GetMonitorInfo(_hmon)
+            _wl, _wt, _wr, _wb = _info.get("Work", (0, 0, 1920, 1080))
+            init_x, init_y = _wl, _wt
+            init_w, init_h = _wr - _wl, _wb - _wt
+            _slog(f"initial window size = full work area {init_w}x{init_h} at ({init_x},{init_y})")
+        except Exception as e:
+            _slog(f"work area query failed ({e}), falling back to 580x720")
+            init_w, init_h = 580, 720
+            init_x, init_y = 100, 100
 
         _slog("creating main window")
         window = webview.create_window(
