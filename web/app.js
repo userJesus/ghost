@@ -201,6 +201,39 @@ function ghostApp() {
                 marked.setOptions({ breaks: true, gfm: true });
                 this.setStatus('Carregando...');
 
+                // Route every in-page link click to the OS default browser
+                // instead of letting the webview navigate its own content to
+                // the URL (which replaced the whole Ghost UI with the
+                // destination page). Delegated on document so it covers
+                // assistant chat messages, release notes, update banners,
+                // and anything else that renders <a href>. Respects:
+                //   - modifier keys (Ctrl/Cmd/Shift/Alt click) → let the
+                //     webview handle it the default way so power users can
+                //     still do in-webview navigation if ever needed.
+                //   - anchors with href starting with "#" (in-page jumps).
+                //   - anchors explicitly opted out via data-ghost-local.
+                document.addEventListener('click', (e) => {
+                    const a = e.target && e.target.closest && e.target.closest('a[href]');
+                    if (!a) return;
+                    if (e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+                    if (a.hasAttribute('data-ghost-local')) return;
+                    const href = a.getAttribute('href') || '';
+                    if (!href || href.startsWith('#') || href.startsWith('javascript:')) return;
+                    // Only externalize http(s)/mailto — anything else (file:,
+                    // custom schemes) falls through to the default handler.
+                    if (!/^(https?:|mailto:)/i.test(href)) return;
+                    e.preventDefault();
+                    try {
+                        window.pywebview.api.open_url(href);
+                    } catch (_) {
+                        // Bridge hiccup — fall back to a new tab so the URL
+                        // isn't simply lost. In a frameless webview this
+                        // usually just no-ops, which is still better than
+                        // clobbering the Ghost UI.
+                        try { window.open(href, '_blank'); } catch (_) {}
+                    }
+                }, true);
+
                 // Expose a global key handler so Python can inject keystrokes via evaluate_js
                 window.ghostKey = (payload) => this.handleGlobalKey(payload);
 

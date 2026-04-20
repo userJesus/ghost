@@ -4,7 +4,7 @@ All installers, the py2app bundler, PyInstaller, and the in-app update checker
 read from here so a release is a single-line change.
 """
 
-__version__ = "1.0.26"
+__version__ = "1.0.27"
 
 # GitHub repo used by the update checker to find the latest release.
 GITHUB_OWNER = "userJesus"
