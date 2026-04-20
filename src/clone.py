@@ -475,6 +475,112 @@ def _ensure_playwright(status_cb) -> bool:
     return _try_import_playwright()
 
 
+def _render_with_ghost_webview(url: str, status_cb, cancel_flag) -> tuple[str, str] | None:
+    """Render a page through the ALREADY-RUNNING pywebview engine (WebView2
+    on Windows) and read back `document.documentElement.outerHTML` after JS
+    executes. No Playwright, no Chromium download, no 200MB bundle — reuses
+    the same engine that's rendering Ghost's own UI.
+
+    Called from the clone worker thread. pywebview allows `create_window`
+    from non-main threads as long as `webview.start()` is already running
+    (see pywebview/__init__.py line 418), which it always is inside Ghost.
+
+    Returns (html, final_url) on success, None if the window hasn't rendered
+    by the timeout or if the worker was cancelled."""
+    import time as _t
+    try:
+        import webview
+    except Exception as e:
+        print(f"[clone] pywebview import failed: {e}", flush=True)
+        return None
+
+    # Skip if we're not inside a running pywebview app (e.g. when the cloner
+    # is invoked from a standalone CLI test). Only way to tell is to check
+    # if there's at least one live window in the registry.
+    if not getattr(webview, "windows", None):
+        return None
+
+    status_cb("Renderizando com WebView2...")
+    rendered = {"html": None, "url": None, "error": None}
+    done = threading.Event()
+    render_win = {"w": None}
+
+    def _on_loaded():
+        # Small settle — many SPAs finish their initial render a beat after
+        # the loaded event fires (hydration, deferred scripts, async imports).
+        _t.sleep(3.0)
+        w = render_win["w"]
+        if w is None:
+            done.set(); return
+        try:
+            # Scroll to the bottom + back to nudge IntersectionObserver-based
+            # lazy loaders, then wait one more tick before grabbing HTML.
+            try:
+                w.evaluate_js(
+                    "window.scrollTo(0, document.body.scrollHeight); "
+                    "setTimeout(() => window.scrollTo(0, 0), 600);"
+                )
+                _t.sleep(1.2)
+            except Exception:
+                pass
+            rendered["html"] = w.evaluate_js("document.documentElement.outerHTML")
+            rendered["url"] = w.evaluate_js("window.location.href") or url
+        except Exception as e:
+            rendered["error"] = f"evaluate_js failed: {e}"
+        finally:
+            try: w.destroy()
+            except Exception: pass
+            done.set()
+
+    try:
+        # Off-screen + hidden so the user never sees the render window. We
+        # use create_window's x/y to park it far off-screen too, as a
+        # defensive belt against `hidden=True` not taking effect on every
+        # Windows build.
+        w = webview.create_window(
+            f"ghost-clone-render-{int(_t.time())}",
+            url,
+            hidden=True,
+            width=1366, height=900,
+            x=-32000, y=-32000,
+            frameless=True,
+            on_top=False,
+            resizable=False,
+        )
+        render_win["w"] = w
+        w.events.loaded += _on_loaded
+    except Exception as e:
+        print(f"[clone] ghost webview create_window failed: {e}", flush=True)
+        return None
+
+    # 60-second hard cap on render. Poll the cancel flag in the meantime so
+    # the modal's Cancel button can interrupt a slow page.
+    deadline = _t.monotonic() + 60.0
+    while not done.is_set():
+        if _t.monotonic() > deadline:
+            try: w.destroy()
+            except Exception: pass
+            print("[clone] ghost webview render timed out after 60s", flush=True)
+            return None
+        if cancel_flag():
+            try: w.destroy()
+            except Exception: pass
+            return None
+        _t.sleep(0.2)
+
+    if rendered["error"]:
+        print(f"[clone] ghost webview render error: {rendered['error']}", flush=True)
+        return None
+    html = rendered["html"] or ""
+    if not html or len(html) < 500:
+        # Too small — likely the page errored or redirected to something
+        # blank. Treat as failure so the caller falls through to Playwright
+        # or static HTML.
+        print(f"[clone] ghost webview returned only {len(html)} bytes; treating as failure", flush=True)
+        return None
+    return html, rendered["url"] or url
+
+
 def _clone_profile_dir(url: str) -> Path:
     """Per-domain persistent Chromium profile so re-clones of the same site
     don't force the user to log in again. One folder per netloc under
@@ -775,12 +881,22 @@ class WebCloner:
             html = static_bytes.decode("utf-8", errors="replace")
             final_url = url
 
-            # Phase 2: SPA detection → Playwright re-render if needed
+            # Phase 2: SPA detection → re-render with JS engine if needed.
+            # Preferred path is Ghost's own WebView2 (free, bundled, no extra
+            # download). Only fall back to Playwright headless if the
+            # WebView2 path fails AND we're in dev (playwright isn't in the
+            # frozen build).
             used_js = False
             if _is_spa_shell(html):
-                self._set_status("Página SPA detectada — renderizando com navegador headless...")
-                if _ensure_playwright(self._set_status):
-                    self._set_status("Renderizando JavaScript...")
+                self._set_status("Página SPA detectada — renderizando com WebView2...")
+                cancel_fn = lambda: self._cancel
+                rendered = _render_with_ghost_webview(url, self._set_status, cancel_fn)
+                if rendered is not None:
+                    html, final_url = rendered
+                    used_js = True
+                    self._set_status("Renderização via WebView2 concluída.")
+                elif _ensure_playwright(self._set_status):
+                    self._set_status("Tentando Playwright como fallback...")
                     rendered = _render_with_playwright(url, self._set_status)
                     if rendered is not None:
                         html, final_url = rendered
@@ -788,7 +904,7 @@ class WebCloner:
                     else:
                         self._set_status("Renderização JS falhou — usando HTML estático")
                 else:
-                    self._set_status("Playwright indisponível — usando HTML estático")
+                    self._set_status("Sem renderizador JS disponível — usando HTML estático")
 
             if self._cancel:
                 raise RuntimeError("Cancelado pelo usuário")
