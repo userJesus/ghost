@@ -100,18 +100,23 @@ def _find_own_top_window() -> int:
 
 def _apply_window_tweaks(api: GhostAPI, init_x: int = 100, init_y: int = 100,
                          init_w: int = 580, init_h: int = 720):
-    """Poll for our window's HWND until found (up to 10s)."""
+    """Poll for our window's HWND until found (up to 10s).
+
+    The win32 calls here (hide_from_capture / hide_from_taskbar /
+    make_non_activating) all touch the window's style, and we run in a
+    background thread. Since 1.1.8 `hide_from_taskbar` uses SWP_ASYNCWINDOWPOS
+    so its SetWindowPos doesn't block waiting for WebView2's UI thread to
+    drain — earlier versions could freeze the entire init chain at
+    `hide_from_capture=True` when WebView2 was cold-initializing on a
+    resource-contended system, because the next SetWindowPos was sent
+    synchronously and never returned until the UI thread was free. The
+    ASYNC flag makes that post-and-return."""
     for attempt in range(50):
         time.sleep(0.2)
         hwnd = _find_own_top_window()
         if hwnd:
             api.set_hwnd(hwnd)
             print(f"[init] HWND={hwnd} (after {attempt + 1} attempts)", flush=True)
-            # Window already created at work-area size in main(). We still
-            # record the "saved rect" in the API so exit_maximized can restore
-            # to the pre-maximize 580x720 default when user clicks minimize.
-            # (Don't call enter_maximized here — pywebview's internal state
-            # races with that resize and snaps the window back to 580x720.)
             print(f"[init] hide_from_capture={hide_from_capture(hwnd, True)}", flush=True)
             print(f"[init] hide_from_taskbar={hide_from_taskbar(hwnd)}", flush=True)
             try:
@@ -151,6 +156,8 @@ def _apply_response_popup_tweaks(api: GhostAPI):
 
         win32gui.EnumWindows(cb, None)
         # Response popup gets the full treatment (capture-excluded + no-taskbar).
+        # hide_from_taskbar's SetWindowPos is async (SWP_ASYNCWINDOWPOS) since
+        # 1.1.8 so this no longer blocks on a cold WebView2 thread.
         if response_hwnd:
             try:
                 api.set_response_hwnd(response_hwnd)

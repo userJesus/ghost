@@ -244,7 +244,18 @@ SWP_NOSIZE = 0x0001
 SWP_NOZORDER = 0x0004
 SWP_NOACTIVATE = 0x0010
 SWP_FRAMECHANGED = 0x0020
-_SWP_FLAGS = SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED
+SWP_ASYNCWINDOWPOS = 0x4000   # post the request; don't block on the owner thread
+# SWP_ASYNCWINDOWPOS is the critical flag: hide_from_taskbar is called from
+# our background poll thread, but the window belongs to pywebview's UI
+# thread. Without ASYNC, SetWindowPos sends WM_NCCALCSIZE synchronously to
+# the UI thread and BLOCKS our caller until WebView2 finishes whatever it's
+# doing (cold init, shader compile, etc). On a fresh install with 10+ webview2
+# helpers from other apps competing for resources, that block lasts long
+# enough to trigger Windows' "não está respondendo" dialog. ASYNC posts the
+# message to the UI thread's queue instead — the style change still applies
+# (on next pump drain, usually milliseconds later) but our poll thread
+# returns instantly.
+_SWP_FLAGS = SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED | SWP_ASYNCWINDOWPOS
 
 
 _GWL_EXSTYLE = -20
