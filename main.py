@@ -428,6 +428,19 @@ def _check_webview2_runtime() -> bool:
 
 
 def main():
+    # Intercept sub-mode flags BEFORE any Ghost-app init. capture_area spawns
+    # sys.executable with --region-selector to run the tkinter region picker
+    # in a separate process (tkinter needs the main thread). In dev that's
+    # python.exe, so the old `-m src.region_selector_cli` approach worked; in
+    # the PyInstaller frozen build `sys.executable` is Ghost.exe, which can't
+    # honor -m because the bundled binary doesn't route argv through Python's
+    # runpy. Handling the flag here runs the selector inside a freshly spawned
+    # Ghost.exe and exits without bringing up the whole app.
+    if "--region-selector" in sys.argv:
+        from src.region_selector_cli import main as _region_main
+        _region_main()
+        return
+
     # Startup log marker so we can tell apart sessions in ghost.log
     _slog(f"=== Ghost starting (pid={os.getpid()}, frozen={getattr(sys, 'frozen', False)}) ===")
 

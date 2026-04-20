@@ -552,9 +552,16 @@ input, textarea, button, select {
 }
 
 /* Logo only in maximized mode (sidebar top). Window mode keeps a lean
-   header with just the toolbar + titlebar controls. */
+   header with just the toolbar + titlebar controls. When the logo is
+   hidden, .header's `justify-content: space-between` would otherwise leave
+   .header-actions anchored to the left with a big blank gap on the right —
+   push it back to the right via margin-left: auto so the toolbar reads as
+   a normal right-aligned title bar. */
 .app:not(.maximized) .brand-logo {
     display: none;
+}
+.app:not(.maximized) .header-actions {
+    margin-left: auto;
 }
 .brand-logo-compact {
     height: 14px;

@@ -2160,9 +2160,18 @@ class GhostAPI:
     def capture_area(self) -> dict:
         """Launch region selector in subprocess (tkinter needs main thread).
         Doesn't hide Ghost — it's already invisible to captures via WDA flag.
+
+        In dev `sys.executable` is python.exe and `-m src.region_selector_cli`
+        works. In the frozen PyInstaller build `sys.executable` is Ghost.exe,
+        which ignores `-m` (the bundled binary doesn't route argv through
+        runpy), so we pass a `--region-selector` flag that main.py intercepts
+        at the top of main() and routes straight to the selector CLI.
         """
         try:
-            cmd = [sys.executable, "-m", "src.region_selector_cli"]
+            if getattr(sys, "frozen", False):
+                cmd = [sys.executable, "--region-selector"]
+            else:
+                cmd = [sys.executable, "-m", "src.region_selector_cli"]
             result = subprocess.run(
                 cmd, cwd=str(ROOT), capture_output=True, text=True, timeout=120
             )
