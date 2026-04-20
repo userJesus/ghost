@@ -617,8 +617,29 @@ def main():
                          daemon=True).start()
 
         debug_mode = "--debug" in sys.argv
+        # Pin WebView2's UserDataFolder to a stable location under ~/.ghost
+        # instead of letting pywebview default to a fresh tempfile.mkdtemp
+        # each launch. Three wins:
+        #   1. Cold-start is now actually warm — fonts, GPU shader cache, codec
+        #      profiles persist across runs, shaving ~5-10s off startup. This
+        #      was the cause of the "app não está respondendo" dialog users
+        #      saw right after auto-updates (fresh install → every tmp* cache
+        #      was brand-new → WebView2 spent a small eternity initializing
+        #      before the message pump started responding).
+        #   2. No more orphan `%TEMP%\tmp<random>\EBWebView` folders piling
+        #      up across sessions (we were up to 200+ on the dev machine).
+        #   3. Installer's ssPostInstall sweep and the preflight sweep stay
+        #      in place as defensive cleanup for anything that DID land in
+        #      %TEMP% (pre-1.1.x versions, or future bugs).
+        _wv_cache = USER_DATA / "webview-cache"
+        try:
+            _wv_cache.mkdir(parents=True, exist_ok=True)
+            _slog(f"webview storage_path = {_wv_cache}")
+        except Exception as e:
+            _slog(f"webview storage_path mkdir failed ({e}); pywebview will fall back to tempfile")
         _slog("calling webview.start()")
-        webview.start(debug=debug_mode, gui="edgechromium")
+        webview.start(debug=debug_mode, gui="edgechromium",
+                      storage_path=str(_wv_cache))
         _slog("webview.start() returned (user closed Ghost)")
     except SystemExit:
         raise
