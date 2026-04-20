@@ -1,7 +1,10 @@
 import os
+import subprocess
 import sys
 import threading
 import time
+import traceback
+from datetime import datetime
 from pathlib import Path
 
 import webview
@@ -311,90 +314,231 @@ def _watch_show_event_windows(hwnd_getter):
     t.start()
 
 
+# =============================================================================
+# Startup bulletproofing
+# =============================================================================
+
+def _slog(msg: str) -> None:
+    """Append a timestamped line to ghost.log so we can diagnose startup crashes
+    from a user's log even when stderr redirect failed."""
+    try:
+        USER_DATA.mkdir(parents=True, exist_ok=True)
+        log = USER_DATA / "ghost.log"
+        with open(log, "a", encoding="utf-8") as f:
+            f.write(f"[{datetime.now().isoformat()}] [startup] {msg}\n")
+    except Exception:
+        pass
+    # Also mirror to stderr (may be redirected to log file later)
+    print(f"[startup] {msg}", flush=True)
+
+
+def _show_error_box(title: str, message: str) -> None:
+    """Native Win32 MessageBox to surface startup errors to the user. Without
+    this, a crash in webview.create_window/start is silent and the user just
+    sees the app "not open" with no clue what happened."""
+    try:
+        import ctypes
+        MB_OK = 0x00000000
+        MB_ICONERROR = 0x00000010
+        MB_TOPMOST = 0x00040000
+        ctypes.windll.user32.MessageBoxW(
+            None, message, title, MB_OK | MB_ICONERROR | MB_TOPMOST
+        )
+    except Exception:
+        pass
+
+
+def _preflight_cleanup_webview2() -> None:
+    """Kill any zombie WebView2 helper processes before creating our windows.
+
+    Background: when Ghost closes abnormally (crash, force-quit, OS kill) its
+    msedgewebview2.exe / WebView2Host.exe children can linger for seconds and
+    hold LOCKS on the WebView2 UserData folder + shared DLLs. If the user
+    reopens Ghost during that window, the new instance's pywebview init fails
+    (or worse, hangs silently), and the only fix was "uninstall + reinstall"
+    — because the lock eventually clears between user actions, but not fast
+    enough for rapid reopens.
+
+    Fix: proactively kill any WebView2 helper at startup. This is safe because
+    Ghost is the primary WebView2 user in this install, and legitimate Ghost
+    helpers are spawned AFTER this cleanup runs. If another app happens to
+    use WebView2 at the same moment it will relaunch its own helpers."""
+    CREATE_NO_WINDOW = 0x08000000
+    for image in ("msedgewebview2.exe", "WebView2Host.exe"):
+        try:
+            result = subprocess.run(
+                ["taskkill", "/F", "/IM", image],
+                capture_output=True, timeout=4,
+                creationflags=CREATE_NO_WINDOW,
+            )
+            if result.returncode == 0:
+                _slog(f"preflight: killed stale {image}")
+        except Exception as e:
+            _slog(f"preflight: taskkill {image} error: {e}")
+    # Short settle so the OS releases file handles before we create new windows
+    time.sleep(0.4)
+
+
+def _check_webview2_runtime() -> bool:
+    """Return True if the WebView2 runtime is installed. If not, show a
+    MessageBox pointing the user to the evergreen installer URL.
+
+    Without the runtime Edge-Chromium backend won't load and pywebview will
+    fail deep inside its C++ bindings with a confusing error."""
+    try:
+        import winreg
+        # Evergreen WebView2 registers under HKLM\SOFTWARE\WOW6432Node\...
+        paths = [
+            r"SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}",
+            r"SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}",
+        ]
+        for p in paths:
+            try:
+                k = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, p)
+                winreg.CloseKey(k)
+                return True
+            except OSError:
+                continue
+        # Per-user install
+        for p in paths:
+            try:
+                k = winreg.OpenKey(winreg.HKEY_CURRENT_USER, p)
+                winreg.CloseKey(k)
+                return True
+            except OSError:
+                continue
+        return False
+    except Exception:
+        # If we can't check, assume it's there to avoid false alarms
+        return True
+
+
 def main():
+    # Startup log marker so we can tell apart sessions in ghost.log
+    _slog(f"=== Ghost starting (pid={os.getpid()}, frozen={getattr(sys, 'frozen', False)}) ===")
+
+    # (1) Clean up zombie WebView2 helpers from previous crashes/closes BEFORE
+    # we touch webview.* — this is the main fix for "crashes on reopen, need to
+    # reinstall" reports. Reinstalling was just buying time for the OS to
+    # release locked file handles; now we force that release up front.
+    _preflight_cleanup_webview2()
+
+    # (2) Validate WebView2 runtime is installed. On modern Win10/11 it's
+    # pre-installed, but some LTSC or stripped installs may lack it.
+    if not _check_webview2_runtime():
+        _slog("WebView2 runtime NOT FOUND — showing error and exiting")
+        _show_error_box(
+            "Ghost — WebView2 ausente",
+            "O Ghost precisa do Microsoft Edge WebView2 Runtime para funcionar.\n\n"
+            "Baixe e instale: https://go.microsoft.com/fwlink/p/?LinkId=2124703\n\n"
+            "Depois, abra o Ghost novamente.",
+        )
+        sys.exit(1)
+
     # Single-instance guard — exits if another Ghost is already running and
     # signals it to show itself. Mac: NSApplication handles double-launch by
     # default (brings existing instance to front).
     _ensure_single_instance_windows()
 
     # Redirect stderr to a log file so crashes are captured even under pythonw.
+    # We append now (not truncate) to preserve the startup log we wrote above.
     try:
-        sys.stderr = open(LOG_FILE, "w", encoding="utf-8", buffering=1)
+        sys.stderr = open(LOG_FILE, "a", encoding="utf-8", buffering=1)
         sys.stdout = sys.stderr
-    except Exception:
-        pass
+    except Exception as e:
+        _slog(f"stderr redirect failed (non-fatal): {e}")
 
-    api = GhostAPI()
-    _watch_show_event_windows(lambda: api._hwnd)
+    try:
+        _slog("creating GhostAPI")
+        api = GhostAPI()
+        _watch_show_event_windows(lambda: api._hwnd)
 
-    # Placeholder values; real centering is done via Win32 after the window exists
-    init_w, init_h = 580, 720
-    init_x, init_y = 100, 100
+        # Placeholder values; real centering is done via Win32 after the window exists
+        init_w, init_h = 580, 720
+        init_x, init_y = 100, 100
 
-    window = webview.create_window(
-        "Ghost",
-        str(WEB_INDEX),
-        js_api=api,
-        width=init_w,
-        height=init_h,
-        x=init_x,
-        y=init_y,
-        min_size=(40, 40),
-        frameless=True,
-        easy_drag=False,
-        on_top=True,
-        resizable=True,
-        background_color="#131313",
-    )
-    api.set_window(window)
+        _slog("creating main window")
+        window = webview.create_window(
+            "Ghost",
+            str(WEB_INDEX),
+            js_api=api,
+            width=init_w,
+            height=init_h,
+            x=init_x,
+            y=init_y,
+            min_size=(40, 40),
+            frameless=True,
+            easy_drag=False,
+            on_top=True,
+            resizable=True,
+            background_color="#131313",
+        )
+        api.set_window(window)
 
-    # Pre-create the response popup window (hidden AND off-screen).
-    # We park it at x=-10000 so DWM doesn't reserve any visible region
-    # that could render as a black rectangle in screen captures.
-    response_win = webview.create_window(
-        "Ghost Response",
-        str(WEB_RESPONSE),
-        js_api=api,
-        width=540,
-        height=600,
-        x=-10000,
-        y=-10000,
-        frameless=True,
-        on_top=True,
-        resizable=True,
-        hidden=True,
-        background_color="#131313",
-    )
-    api.set_response_window(response_win)
+        # Pre-create the response popup window (hidden AND off-screen).
+        # We park it at x=-10000 so DWM doesn't reserve any visible region
+        # that could render as a black rectangle in screen captures.
+        _slog("creating response popup window")
+        response_win = webview.create_window(
+            "Ghost Response",
+            str(WEB_RESPONSE),
+            js_api=api,
+            width=540,
+            height=600,
+            x=-10000,
+            y=-10000,
+            frameless=True,
+            on_top=True,
+            resizable=True,
+            hidden=True,
+            background_color="#131313",
+        )
+        api.set_response_window(response_win)
 
-    # Floating dropdown popup — third window used in compact mode to render
-    # chip options outside the compact bar's bounds (a 200px-tall window can't
-    # fit a 280px flyout). easy_drag=False + no drag handlers in dropdown.html
-    # keep the popup from being moveable like a normal window; it behaves
-    # like a native menu (auto-hides on blur/Esc).
-    dropdown_win = webview.create_window(
-        "Ghost Dropdown",
-        str(WEB_DROPDOWN),
-        js_api=api,
-        width=240,
-        height=300,
-        x=-10000,
-        y=-10000,
-        frameless=True,
-        easy_drag=False,
-        on_top=True,
-        resizable=False,
-        hidden=True,
-        background_color="#2d2d2d",
-    )
-    api.set_dropdown_window(dropdown_win)
+        # Floating dropdown popup — third window used in compact mode to render
+        # chip options outside the compact bar's bounds.
+        _slog("creating dropdown popup window")
+        dropdown_win = webview.create_window(
+            "Ghost Dropdown",
+            str(WEB_DROPDOWN),
+            js_api=api,
+            width=240,
+            height=300,
+            x=-10000,
+            y=-10000,
+            frameless=True,
+            easy_drag=False,
+            on_top=True,
+            resizable=False,
+            hidden=True,
+            background_color="#2d2d2d",
+        )
+        api.set_dropdown_window(dropdown_win)
 
-    threading.Thread(target=_apply_window_tweaks,
-                     args=(api, init_x, init_y, init_w, init_h),
-                     daemon=True).start()
+        threading.Thread(target=_apply_window_tweaks,
+                         args=(api, init_x, init_y, init_w, init_h),
+                         daemon=True).start()
 
-    debug_mode = "--debug" in sys.argv
-    webview.start(debug=debug_mode, gui="edgechromium")
+        debug_mode = "--debug" in sys.argv
+        _slog("calling webview.start()")
+        webview.start(debug=debug_mode, gui="edgechromium")
+        _slog("webview.start() returned (user closed Ghost)")
+    except SystemExit:
+        raise
+    except Exception as e:
+        # Something blew up during init. Log the full traceback and show a
+        # MessageBox so the user sees what went wrong instead of a silent
+        # crash. Without this the Ghost exe would just vanish with no clue.
+        tb = traceback.format_exc()
+        _slog(f"FATAL during startup: {type(e).__name__}: {e}\n{tb}")
+        _show_error_box(
+            "Ghost — erro ao iniciar",
+            f"Algo quebrou ao iniciar o Ghost:\n\n{type(e).__name__}: {e}\n\n"
+            f"Detalhes foram salvos em:\n{LOG_FILE}\n\n"
+            "Se o erro persistir, reinstale o Ghost pela última versão em\n"
+            "https://github.com/userJesus/ghost/releases/latest",
+        )
+        sys.exit(1)
 
 
 if __name__ == "__main__":
