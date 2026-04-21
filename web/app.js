@@ -191,9 +191,13 @@ function ghostApp() {
             return 'Iniciar reunião';
         },
         get meetingTooltip() {
-            if (this.meetingProcessing) return 'Gerando transcrição + resumo no desktop';
-            if (this.meetingRunning) return 'Parar de gravar e gerar documento';
-            return 'Iniciar gravação de reunião (áudio + screenshots + resumo ao final)';
+            // The "BETA" marker is surfaced here so that in window (non-maximized)
+            // mode, where the inline .beta-pill is hidden, the user still sees
+            // the beta status on hover. In maximized mode the pill makes it
+            // redundant visually, but it doesn't hurt in the tooltip either.
+            if (this.meetingProcessing) return 'BETA · Gerando transcrição + resumo no desktop';
+            if (this.meetingRunning)    return 'BETA · Parar de gravar e gerar documento';
+            return 'BETA · Iniciar gravação (áudio + screenshots + resumo). Dica: pra reunião no navegador, abra a aba numa JANELA separada.';
         },
 
         // --- Init ---

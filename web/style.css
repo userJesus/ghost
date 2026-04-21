@@ -2130,6 +2130,88 @@ input, textarea, button, select {
     margin-bottom: 16px;
 }
 .modal-hint strong { color: var(--text-primary); }
+
+/* ---- Meeting modal: critical pre-start instruction block ----
+   Surfaces the "select the right tab/app" rule before the user clicks start,
+   since picking the wrong target (e.g. recording a browser tab that gets
+   reused for email mid-meeting) silently ruins the recording. */
+.meeting-warning {
+    display: flex;
+    gap: 12px;
+    padding: 12px 14px;
+    margin-bottom: 14px;
+    background: rgba(97, 219, 180, 0.08);
+    border: 1px solid rgba(97, 219, 180, 0.35);
+    border-left: 3px solid var(--accent);
+    border-radius: 6px;
+    color: var(--text-primary);
+    font-size: 13px;
+    line-height: 1.55;
+}
+.meeting-warning-icon {
+    font-size: 18px;
+    flex-shrink: 0;
+    line-height: 1.3;
+}
+.meeting-warning-body { flex: 1; min-width: 0; }
+.meeting-warning-body strong { color: var(--text-primary); }
+.meeting-warning-list {
+    margin: 8px 0 0;
+    padding-left: 18px;
+    color: var(--text-secondary);
+}
+.meeting-warning-list li { margin-bottom: 6px; }
+.meeting-warning-list li:last-child { margin-bottom: 0; }
+.meeting-warning-list kbd {
+    font-family: inherit;
+    font-size: 11px;
+    padding: 1px 5px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 3px;
+    color: var(--text-primary);
+}
+
+/* ---- BETA markers ----
+   Two variants:
+   - .beta-badge: inline pill next to modal/section titles (prominent, static)
+   - .beta-pill:  smaller pill inside .tool-btn, only visible in maximized mode
+                  (in window mode, BETA comes through the hover tooltip instead) */
+.beta-badge {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.6px;
+    padding: 2px 7px;
+    margin-left: 8px;
+    border-radius: 999px;
+    background: rgba(97, 219, 180, 0.18);
+    color: var(--accent);
+    border: 1px solid rgba(97, 219, 180, 0.45);
+    vertical-align: middle;
+    text-transform: uppercase;
+}
+.beta-pill {
+    display: none;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.6px;
+    padding: 1px 5px;
+    border-radius: 999px;
+    background: rgba(97, 219, 180, 0.15);
+    color: var(--accent);
+    border: 1px solid rgba(97, 219, 180, 0.4);
+    text-transform: uppercase;
+    line-height: 1.3;
+    flex-shrink: 0;
+}
+/* Only surface .beta-pill in maximized mode, positioned between the label
+   and the recording dot (which uses margin-left: auto to push itself to the
+   right-most spot). In window mode the pill stays hidden and the BETA marker
+   surfaces via the hover tooltip. */
+.app.maximized .tool-btn.beta-feature .beta-pill {
+    display: inline-block;
+}
 .modal-section-label {
     font-size: 12px;
     font-weight: 600;
