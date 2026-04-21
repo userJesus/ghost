@@ -10,9 +10,57 @@ for `class GhostAPI(WindowMixin, CaptureMixin, ChatMixin, MeetingMixin):`.
 """
 from __future__ import annotations
 
+# ── Imports migrated from api.py top-level so extracted method bodies
+# ── resolve names like `threading`, `os`, `force_foreground`, etc. exactly
+# ── as they did when they lived in api.py. Do not trim without checking
+# ── every reference in method bodies below first.
+import json
+import os
+import subprocess
+import sys
+import threading
+import time
+import traceback
+from datetime import datetime
+from pathlib import Path
+
+from PIL import Image
+
+from src import history as _history
+from src.capture import (
+    capture_fullscreen,
+    capture_region,
+    image_to_base64,
+    image_to_data_url,
+)
+from src.clone import WebCloner, clones_dir
+from src.config import PRESETS
+from src.gpt_client import build_user_message, chat_completion
+from src.meeting import MeetingRecorder, format_time
+from src.meeting_processor import (
+    meetings_dir,
+    summarize_meeting,
+    transcribe_audio_verbose,
+    transcribe_chunks_verbose,
+    write_markdown_doc,
+)
+from src.scroll_capture import (
+    capture_monitor,
+    list_monitors,
+    scroll_and_capture,
+    stitch_vertical,
+)
+from src.voice import VoiceRecorder
+from src.win_focus import (
+    drag_window_loop,
+    force_foreground,
+    hide_window,
+)
+
 # Error-logging helper used by every bridge method. Imported from api.py
 # so the log format stays uniform across mixins.
 from src.api import _log_error  # noqa: F401 — used inside method bodies below
+
 
 
 class CaptureMixin:
