@@ -59,7 +59,12 @@ from src.win_focus import (
 
 # Error-logging helper used by every bridge method. Imported from api.py
 # so the log format stays uniform across mixins.
-from src.api import _log_error  # noqa: F401 — used inside method bodies below
+# Module-level names from api.py that extracted method bodies reference:
+# _log_error (uniform error log format), MAX_HISTORY (chat buffer cap),
+# ROOT (bundled-asset root for subprocess), _pid_alive / _snapshot_own_webview2_pids
+# (close_app process cleanup). All defined in api.py BEFORE its mixin imports,
+# so this import resolves cleanly during api.py's load.
+from src.api import MAX_HISTORY, ROOT, _log_error  # noqa: F401
 
 
 

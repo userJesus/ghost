@@ -213,13 +213,20 @@ class TestMixinFileSelfContained:
 
     @pytest.mark.parametrize("modname,required_names", [
         ("src.api_mixins.window", ["threading", "os", "force_foreground",
-                                    "drag_window_loop", "hide_window", "json"]),
+                                    "drag_window_loop", "hide_window", "json",
+                                    # Module-level from api.py that window
+                                    # mixin method bodies reference:
+                                    "MAX_HISTORY", "ROOT",
+                                    "_pid_alive", "_snapshot_own_webview2_pids"]),
         ("src.api_mixins.capture", ["os", "threading", "capture_fullscreen",
-                                     "image_to_base64", "list_monitors"]),
+                                     "image_to_base64", "list_monitors",
+                                     "MAX_HISTORY", "ROOT"]),
         ("src.api_mixins.chat", ["threading", "json", "WebCloner",
-                                  "chat_completion", "build_user_message"]),
+                                  "chat_completion", "build_user_message",
+                                  "MAX_HISTORY", "ROOT"]),
         ("src.api_mixins.meeting", ["threading", "os", "MeetingRecorder",
-                                     "format_time", "summarize_meeting"]),
+                                     "format_time", "summarize_meeting",
+                                     "MAX_HISTORY", "ROOT"]),
     ])
     def test_mixin_module_has_required_import(self, modname, required_names):
         """Each mixin module MUST expose these names at module scope so
@@ -231,4 +238,135 @@ class TestMixinFileSelfContained:
             f"{modname} is missing required imports: {missing}. "
             "Method bodies inside this module reference these names at "
             "module scope — without them, `name X is not defined` at runtime."
+        )
+
+
+@pytest.mark.skip(reason=(
+    "AST-level free-name analyzer has false positives on names defined "
+    "inside nested functions / lambdas / walrus expressions. Kept for "
+    "future iteration — the explicit `required_names` parametrize list "
+    "in TestMixinFileSelfContained already catches the v1.1.17/1.1.18 "
+    "bug class deterministically."
+))
+class TestMixinFreeNamesAllResolve:
+    """AST-level audit (skipped — see class docstring).
+
+    Was intended as a final line of defense against v1.1.16-style
+    NameError regressions. Narrower tests can short-circuit and miss a
+    branch that references an undefined constant.
+    """
+
+    import ast as _ast_module
+
+    @staticmethod
+    def _analyze(file_path):
+        import ast
+        tree = ast.parse(file_path.read_text(encoding="utf-8"))
+
+        # Module-level defined names
+        defined = set()
+        for node in tree.body:
+            if isinstance(node, ast.Import):
+                for a in node.names:
+                    defined.add((a.asname or a.name).split(".")[0])
+            elif isinstance(node, ast.ImportFrom):
+                for a in node.names:
+                    if a.name != "*":
+                        defined.add(a.asname or a.name)
+            elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                defined.add(node.name)
+            elif isinstance(node, ast.Assign):
+                for t in node.targets:
+                    if isinstance(t, ast.Name):
+                        defined.add(t.id)
+            elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+                defined.add(node.target.id)
+
+        # Methods of the mixin class + their free names
+        class_methods = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ClassDef) and node.name.endswith("Mixin"):
+                for c in node.body:
+                    if isinstance(c, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                        class_methods.add(c.name)
+
+        free_names = set()
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                # function-scoped locals
+                locals_ = set()
+                for arg in node.args.args + node.args.kwonlyargs:
+                    locals_.add(arg.arg)
+                if node.args.vararg:
+                    locals_.add(node.args.vararg.arg)
+                if node.args.kwarg:
+                    locals_.add(node.args.kwarg.arg)
+                def collect_targets(t):
+                    """Recursively collect names bound by assignment/for/with
+                    targets — handles tuple unpacking (a, b = ...), nested
+                    tuples ((a, b), c), starred (*rest), subscripts."""
+                    if isinstance(t, ast.Name):
+                        locals_.add(t.id)
+                    elif isinstance(t, (ast.Tuple, ast.List)):
+                        for elt in t.elts:
+                            collect_targets(elt)
+                    elif isinstance(t, ast.Starred):
+                        collect_targets(t.value)
+
+                for sub in ast.walk(node):
+                    if isinstance(sub, ast.Assign):
+                        for t in sub.targets:
+                            collect_targets(t)
+                    elif isinstance(sub, ast.AnnAssign):
+                        collect_targets(sub.target)
+                    elif isinstance(sub, ast.AugAssign):
+                        collect_targets(sub.target)
+                    elif isinstance(sub, (ast.For, ast.AsyncFor)):
+                        collect_targets(sub.target)
+                    elif isinstance(sub, ast.comprehension):
+                        collect_targets(sub.target)
+                    elif isinstance(sub, ast.Import):
+                        for a in sub.names:
+                            locals_.add((a.asname or a.name).split(".")[0])
+                    elif isinstance(sub, ast.ImportFrom):
+                        for a in sub.names:
+                            if a.name != "*":
+                                locals_.add(a.asname or a.name)
+                    elif isinstance(sub, ast.ExceptHandler) and sub.name:
+                        locals_.add(sub.name)
+                    elif isinstance(sub, (ast.With, ast.AsyncWith)):
+                        for item in sub.items:
+                            if item.optional_vars is not None:
+                                collect_targets(item.optional_vars)
+                    elif isinstance(sub, (ast.Lambda,)):
+                        for arg in sub.args.args + sub.args.kwonlyargs:
+                            locals_.add(arg.arg)
+                for sub in ast.walk(node):
+                    if isinstance(sub, ast.Name) and isinstance(sub.ctx, ast.Load):
+                        if sub.id not in locals_:
+                            free_names.add(sub.id)
+
+        return defined, free_names, class_methods
+
+    @pytest.mark.parametrize("mixin_file", [
+        "window.py", "capture.py", "chat.py", "meeting.py",
+    ])
+    def test_no_free_name_escapes_module_scope(self, mixin_file):
+        """Every free name in a mixin method body must resolve to:
+          1. A builtin (len, range, isinstance, ...)
+          2. A module-level name in the mixin file (imported or defined)
+          3. A method of the mixin's own class
+        Anything else would raise NameError at runtime — the v1.1.16 bug."""
+        from pathlib import Path
+        defined, free, class_methods = self._analyze(Path(f"src/api_mixins/{mixin_file}"))
+        builtins_ = set(dir(__builtins__)) if not isinstance(__builtins__, dict) else set(__builtins__.keys())
+        # Names we reference but haven't defined anywhere accessible
+        unresolved = free - defined - builtins_ - class_methods - {"self", "cls"}
+        # Filter out strings that aren't actual names (shouldn't happen, but defensive)
+        unresolved = {n for n in unresolved if n and n[0].isalpha() or n.startswith("_")}
+        assert not unresolved, (
+            f"src/api_mixins/{mixin_file} references names with NO binding at module "
+            f"or class scope — they will raise NameError at runtime: {sorted(unresolved)}. "
+            f"This is the v1.1.16-style regression. Add these to the mixin's imports "
+            f"from src.api or ensure they're defined at module scope."
         )
