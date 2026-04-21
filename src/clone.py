@@ -1,12 +1,18 @@
-"""Backwards-compatible re-export of the moved web cloner.
+"""Backwards-compatible re-export of the moved module.
 
 Real implementation: `src.cloner.web_cloner`.
 
-External callers (`src.api`) historically did `from .clone import WebCloner, clones_dir`.
-This shim preserves that import surface.
+Wholesale re-export: every top-level name of the new module (including
+private `_name` helpers and imported symbols) is copied into this
+namespace, so any pre-refactor `from src.clone import X` keeps
+working — whether X was public, private, or a re-imported symbol.
 """
 from __future__ import annotations
 
-from .cloner.web_cloner import WebCloner, clones_dir
+from .cloner import web_cloner as _src
 
-__all__ = ["WebCloner", "clones_dir"]
+for _name in dir(_src):
+    if not _name.startswith("__"):
+        globals()[_name] = getattr(_src, _name)
+
+del _name, _src

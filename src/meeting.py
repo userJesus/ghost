@@ -1,16 +1,18 @@
-"""Backwards-compatible re-export of the moved meeting recorder.
+"""Backwards-compatible re-export of the moved module.
 
 Real implementation: `src.recording.meeting_recorder`.
+
+Wholesale re-export: every top-level name of the new module (including
+private `_name` helpers and imported symbols) is copied into this
+namespace, so any pre-refactor `from src.meeting import X` keeps
+working — whether X was public, private, or a re-imported symbol.
 """
 from __future__ import annotations
 
-from .recording.meeting_recorder import (  # noqa: F401
-    BLOCK_SIZE,
-    CHANNELS,
-    SAMPLE_RATE,
-    VIDEO_FPS,
-    VIDEO_MAX_WIDTH,
-    VIDEO_QUALITY,
-    MeetingRecorder,
-    format_time,
-)
+from .recording import meeting_recorder as _src
+
+for _name in dir(_src):
+    if not _name.startswith("__"):
+        globals()[_name] = getattr(_src, _name)
+
+del _name, _src

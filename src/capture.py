@@ -1,12 +1,18 @@
-"""Backwards-compatible re-export of the moved low-level capture helpers.
+"""Backwards-compatible re-export of the moved module.
 
 Real implementation: `src.capture_pkg.screenshot`.
+
+Wholesale re-export: every top-level name of the new module (including
+private `_name` helpers and imported symbols) is copied into this
+namespace, so any pre-refactor `from src.capture import X` keeps
+working — whether X was public, private, or a re-imported symbol.
 """
 from __future__ import annotations
 
-from .capture_pkg.screenshot import (  # noqa: F401
-    capture_fullscreen,
-    capture_region,
-    image_to_base64,
-    image_to_data_url,
-)
+from .capture_pkg import screenshot as _src
+
+for _name in dir(_src):
+    if not _name.startswith("__"):
+        globals()[_name] = getattr(_src, _name)
+
+del _name, _src

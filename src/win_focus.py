@@ -1,30 +1,18 @@
-"""Backwards-compatible re-export of the moved Win32 focus helpers.
+"""Backwards-compatible re-export of the moved module.
 
 Real implementation: `src.platform.windows.focus`.
-Kept at this path for external compatibility and PyInstaller hiddenimports.
+
+Wholesale re-export: every top-level name of the new module (including
+private `_name` helpers and imported symbols) is copied into this
+namespace, so any pre-refactor `from src.win_focus import X` keeps
+working — whether X was public, private, or a re-imported symbol.
 """
 from __future__ import annotations
 
-from .platform.windows.focus import (  # noqa: F401
-    HTCAPTION,
-    WDA_EXCLUDEFROMCAPTURE,
-    WDA_MONITOR,
-    WDA_NONE,
-    WM_NCLBUTTONDOWN,
-    drag_window_loop,
-    force_foreground,
-    get_foreground_hwnd,
-    hide_from_capture,
-    hide_from_taskbar,
-    hide_window,
-    is_window_visible,
-    make_activating,
-    make_non_activating,
-    set_color_key,
-    set_dwm_shadow,
-    set_foreground,
-    set_round_region,
-    set_window_opacity,
-    show_window,
-    start_drag,
-)
+from .platform.windows import focus as _src
+
+for _name in dir(_src):
+    if not _name.startswith("__"):
+        globals()[_name] = getattr(_src, _name)
+
+del _name, _src
