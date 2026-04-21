@@ -108,7 +108,6 @@ ignore = ["E501"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["N802", "N803", "N806", "SIM", "B", "A"]
-"test/**" = ["N802", "N803", "N806", "SIM", "B", "A"]
 # Win32 constants and idiomatic Windows code use uppercase names (SWP_NOMOVE etc.)
 "src/win_focus.py" = ["N806", "SIM105"]
 "src/platform/windows/focus.py" = ["N806", "SIM105"]

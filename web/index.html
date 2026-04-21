@@ -9,8 +9,16 @@
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
-    <link rel="stylesheet" href="style.css?v=1.0.13">
-    <link rel="stylesheet" href="pixel-ghost.css?v=1.0.13">
+    <!-- Split from a single 3417-line style.css into 5 ordered files under web/css/.
+         Load order here MUST match the cascade of the original file — do not
+         reorder. Each file in web/css/ is byte-identical to its line range
+         in the old style.css. See the header comment in each file. -->
+    <link rel="stylesheet" href="css/01-base-and-header.css?v=1.1.16">
+    <link rel="stylesheet" href="css/02-chat.css?v=1.1.16">
+    <link rel="stylesheet" href="css/03-composer-and-meeting.css?v=1.1.16">
+    <link rel="stylesheet" href="css/04-modals.css?v=1.1.16">
+    <link rel="stylesheet" href="css/05-misc.css?v=1.1.16">
+    <link rel="stylesheet" href="pixel-ghost.css?v=1.1.16">
     <script defer src="vendor/alpine.min.js"></script>
     <script src="vendor/marked.min.js"></script>
     <!-- Shared helpers (escapeHTML, stripMarkdown, tooltip manager, TTS voice picker).

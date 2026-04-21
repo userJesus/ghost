@@ -1,0 +1,638 @@
+/* ============================================================
+   03-composer-and-meeting.css
+   composer, dropdowns, meeting toggle, watch, voice input
+   Extracted from web/style.css (lines 1450-2080).
+   Loading order in index.html is preserved so CSS cascade
+   resolution matches the pre-split behavior byte-for-byte.
+   ============================================================ */
+/* ============ Composer ============ */
+.composer {
+    flex-shrink: 0;
+    padding: 8px 16px 14px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.chips {
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+    align-items: center;
+    flex-wrap: wrap;
+    width: 100%;
+}
+/* display:contents faz os grupos desaparecerem do layout, mantendo
+   semântica no HTML mas permitindo que os chips fluam como filhos diretos */
+.chip-group { display: contents; }
+
+/* Custom dropdown — chip-trigger + chip-flyout (in-webview, herda WDA) */
+.chip {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+}
+.chip-trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(255, 255, 255, 0.085);
+    color: var(--text-primary);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.28);
+    border-radius: 4px;
+    padding: 0 10px 0 10px;
+    font-size: 12.5px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.12s ease, border-color 0.12s ease;
+    min-width: 170px;
+    height: 30px;
+    text-align: left;
+    user-select: none;
+}
+.chip-trigger:hover {
+    background: rgba(255, 255, 255, 0.12);
+    border-color: rgba(255, 255, 255, 0.22);
+    border-bottom-color: rgba(255, 255, 255, 0.35);
+}
+.chip.open .chip-trigger {
+    background: rgba(255, 255, 255, 0.14);
+    border-bottom-color: var(--accent);
+    border-bottom-width: 2px;
+    padding-bottom: 0;
+}
+.chip-trigger .chip-ico-left {
+    width: 14px;
+    height: 14px;
+    color: var(--accent);
+    flex-shrink: 0;
+}
+.chip-value {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text-primary);
+}
+.chip-caret {
+    width: 10px;
+    height: 6px;
+    color: var(--text-secondary);
+    flex-shrink: 0;
+    transition: transform 0.15s ease;
+}
+.chip.open .chip-caret {
+    transform: rotate(180deg);
+    color: var(--accent);
+}
+.chip-mini .chip-trigger {
+    min-width: 120px;
+    height: 26px;
+    font-size: 11.5px;
+    padding: 0 8px;
+}
+
+/* Fluent flyout — abre pra cima (composer está no rodapé do app normal) */
+.chip-flyout {
+    position: absolute;
+    bottom: calc(100% + 6px);
+    left: 0;
+    min-width: 100%;
+    max-width: 320px;
+    /* Clamps to the available viewport so it never overflows short windows. */
+    max-height: min(280px, calc(100vh - 48px));
+    overflow-y: auto;
+    background: rgba(45, 45, 45, 0.96);
+    backdrop-filter: blur(40px) saturate(135%);
+    -webkit-backdrop-filter: blur(40px) saturate(135%);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 8px;
+    box-shadow: 0 16px 32px rgba(0, 0, 0, 0.42),
+                0 0 0 1px rgba(0, 0, 0, 0.28);
+    padding: 4px;
+    z-index: 30;
+    /* Usa scrollbar global */
+}
+
+/* Compact mode: o composer usa column-reverse (input encima, chips ao
+   lado do rodapé da barra). Flyout abre PARA CIMA do chip (default:
+   bottom: calc(100% + 6px)) — cabe inteiro no espaço acima porque os
+   chips ficam no final da barra. max-height clampa à viewport. */
+/* Compact-mode composer keeps its natural chips→input order now that the
+   dropdown is a separate popup window (see src/api.py::show_dropdown_popup
+   and web/dropdown.html). The popup escapes the 200px compact bar, so we
+   no longer need to reorder the composer to make room for an in-page
+   flyout. */
+.chip-flyout-label {
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    padding: 6px 10px 4px 10px;
+}
+.chip-option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 7px 10px;
+    background: transparent;
+    border: none;
+    border-radius: 4px;
+    color: var(--text-primary);
+    font-size: 13px;
+    font-weight: 400;
+    text-align: left;
+    cursor: pointer;
+    transition: background 0.1s ease;
+}
+.chip-option:hover {
+    background: rgba(255, 255, 255, 0.08);
+}
+.chip-option:active {
+    background: rgba(255, 255, 255, 0.04);
+}
+.chip-option.selected {
+    background: var(--accent-rest-bg);
+    color: var(--accent);
+    font-weight: 500;
+}
+.chip-option.selected:hover {
+    background: rgba(97, 219, 180, 0.2);
+}
+.chip-option-check {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+    color: var(--accent);
+}
+.chip-option-check svg { width: 12px; height: 12px; }
+.chip-option-icon {
+    font-size: 14px;
+    flex-shrink: 0;
+}
+.chip-option-label {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Meeting toggle (Fluent button) */
+.meeting-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(255, 255, 255, 0.085);
+    color: var(--text-primary);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.28);
+    border-radius: 4px;
+    padding: 5px 14px;
+    font-size: 12.5px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.12s ease, border-color 0.12s ease;
+    height: 30px;
+}
+.meeting-toggle:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.12);
+    border-color: rgba(255, 255, 255, 0.22);
+    border-bottom-color: rgba(255, 255, 255, 0.35);
+}
+.meeting-toggle:active:not(:disabled) {
+    background: rgba(255, 255, 255, 0.08);
+}
+.meeting-toggle.recording {
+    background: var(--critical-bg);
+    color: var(--critical);
+    border-color: var(--critical-border);
+    border-bottom-color: var(--critical-border);
+}
+.meeting-toggle.processing {
+    background: var(--warning-bg);
+    color: var(--warning-text);
+    border-color: var(--warning-border);
+    border-bottom-color: var(--warning-border);
+    cursor: wait;
+}
+.meeting-toggle:disabled {
+    opacity: 0.7;
+}
+.meeting-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #ff5555;
+    animation: pulse-soft 1s ease-in-out infinite;
+    box-shadow: 0 0 6px rgba(255, 85, 85, 0.6);
+}
+
+.meeting-banner {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 0 auto;
+    max-width: 520px;
+    padding: 6px 12px;
+    background: var(--critical-bg);
+    border: 1px solid rgba(196, 43, 28, 0.4);
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 500;
+}
+.meeting-banner-label {
+    color: var(--critical);
+    font-weight: 600;
+    letter-spacing: 0.3px;
+}
+.meeting-toggle.processing ~ .meeting-banner .meeting-banner-label,
+.meeting-banner-label.processing {
+    color: var(--warning-text);
+}
+.meeting-banner-time {
+    color: var(--text-primary);
+    font-variant-numeric: tabular-nums;
+    font-family: 'Cascadia Code', Consolas, monospace;
+    font-size: 11px;
+}
+.meeting-banner-status {
+    color: var(--text-secondary);
+    font-weight: 400;
+    font-size: 11px;
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Watch toggle */
+.watch-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(255, 255, 255, 0.085);
+    color: var(--text-primary);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.28);
+    border-radius: 4px;
+    padding: 5px 14px;
+    font-size: 12.5px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.12s ease, border-color 0.12s ease;
+    height: 30px;
+}
+.watch-toggle:hover {
+    background: rgba(255, 255, 255, 0.12);
+    border-color: rgba(255, 255, 255, 0.22);
+    border-bottom-color: rgba(255, 255, 255, 0.35);
+}
+.watch-toggle.active {
+    background: var(--accent-rest-bg);
+    color: var(--accent);
+    border-color: rgba(97, 219, 180, 0.4);
+    border-bottom-color: var(--accent);
+}
+.watch-toggle.active:hover {
+    background: rgba(97, 219, 180, 0.18);
+}
+.watch-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--accent);
+    animation: pulse-soft 1.4s ease-in-out infinite;
+    box-shadow: 0 0 6px rgba(97, 219, 180, 0.6);
+}
+
+.scroll-opts {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    margin: 0 auto;
+    max-width: 520px;
+    border-radius: 6px;
+    background: var(--accent-rest-bg);
+    border: 1px solid rgba(97, 219, 180, 0.25);
+}
+.scroll-opts-label {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    color: var(--accent);
+}
+.scroll-opts .num-stepper {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 8px;
+    background: var(--layer-1);
+    border: 1px solid var(--stroke-default);
+    border-radius: 4px;
+}
+.scroll-opts .num-stepper button {
+    width: 18px;
+    height: 18px;
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 14px;
+    cursor: pointer;
+    border-radius: 3px;
+}
+.scroll-opts .num-stepper button:hover {
+    background: var(--layer-2);
+    color: var(--text-primary);
+}
+.scroll-opts .num-stepper-value {
+    font-size: 11px;
+    color: var(--text-primary);
+    min-width: 60px;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Transcript context panel — aparece acima do input quando usuário
+   grava áudio do sistema. Combinado com a pergunta ao enviar. */
+.transcript-panel {
+    max-width: 560px;
+    margin: 0 auto;
+    width: 100%;
+    background: rgba(97, 219, 180, 0.08);
+    border: 1px solid rgba(97, 219, 180, 0.28);
+    border-bottom-width: 2px;
+    border-bottom-color: var(--accent);
+    border-radius: 8px;
+    padding: 8px 10px 10px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+}
+.transcript-panel-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.2px;
+    color: var(--accent);
+}
+.transcript-icon {
+    width: 14px;
+    height: 14px;
+    color: var(--accent);
+    flex-shrink: 0;
+}
+.transcript-label {
+    color: var(--accent);
+    font-weight: 600;
+}
+.transcript-hint {
+    color: var(--text-tertiary);
+    font-weight: 400;
+    font-size: 10.5px;
+    font-style: italic;
+    margin-left: 2px;
+}
+.transcript-clear {
+    margin-left: auto;
+    width: 20px;
+    height: 20px;
+    border-radius: 4px;
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.12s, color 0.12s;
+    flex-shrink: 0;
+}
+.transcript-clear:hover {
+    background: rgba(255, 85, 85, 0.18);
+    color: #ff8e8e;
+}
+.transcript-clear svg { width: 10px; height: 10px; }
+.transcript-body {
+    font-size: 12.5px;
+    line-height: 1.5;
+    color: var(--text-primary);
+    max-height: 90px;
+    overflow-y: auto;
+    padding: 4px 6px;
+    background: rgba(0, 0, 0, 0.22);
+    border-radius: 5px;
+    user-select: text;
+    word-break: break-word;
+    white-space: pre-wrap;
+}
+
+/* Preview da imagem capturada (painel igual ao transcript mas com thumb) */
+.capture-thumb-wrap {
+    padding: 4px 6px;
+    background: rgba(0, 0, 0, 0.22);
+    border-radius: 5px;
+    display: flex;
+    justify-content: flex-start;
+}
+.capture-thumb {
+    max-height: 140px;
+    max-width: 100%;
+    border-radius: 4px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    object-fit: contain;
+    display: block;
+}
+.app.compact .capture-thumb {
+    max-height: 80px;
+}
+
+/* Em compact mode, painel mais apertado */
+.app.compact .transcript-panel {
+    max-width: 100%;
+    padding: 6px 8px 8px 8px;
+}
+.app.compact .transcript-body {
+    max-height: 60px;
+    font-size: 12px;
+}
+
+/* Composer pill (Fluent text box com botões embutidos) */
+.composer-pill {
+    max-width: 560px;
+    margin: 0 auto;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    background: var(--layer-1);
+    border-radius: 8px;
+    padding: 4px;
+    border: 1px solid var(--stroke-default);
+    border-bottom: 1px solid var(--stroke-strong);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+    transition: border-color 0.12s ease, background 0.12s ease;
+}
+.composer-pill:focus-within {
+    border-color: var(--accent);
+    border-bottom-color: var(--accent);
+    background: var(--layer-2);
+}
+.composer-pill.busy {
+    opacity: 0.55;
+    pointer-events: none;
+}
+
+.pill-btn-capture {
+    position: relative;
+    width: 32px;
+    height: 32px;
+    border-radius: 6px;
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 16px;
+    cursor: pointer;
+    transition: background 0.12s, color 0.12s;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.pill-btn-capture:hover {
+    background: var(--layer-2);
+    color: var(--text-primary);
+}
+.pill-btn-capture:active { background: var(--layer-1); }
+
+.kbd-toggle.active {
+    background: var(--accent-rest-bg);
+    color: var(--accent);
+}
+.kbd-toggle.active:hover {
+    background: rgba(97, 219, 180, 0.2);
+}
+.kbd-indicator {
+    font-size: 14px;
+    animation: pulse-soft 1s ease-in-out infinite;
+}
+
+/* Voice input buttons (mic + system audio) */
+.voice-btn svg { width: 15px; height: 15px; }
+.voice-btn.recording-mic {
+    background: rgba(196, 43, 28, 0.22);
+    color: #ff99a4;
+    box-shadow: 0 0 0 1px rgba(196, 43, 28, 0.5),
+                0 0 10px rgba(196, 43, 28, 0.3);
+    animation: voice-pulse 1.2s ease-in-out infinite;
+}
+.voice-btn.recording-sys {
+    background: rgba(97, 219, 180, 0.22);
+    color: var(--accent);
+    box-shadow: 0 0 0 1px rgba(97, 219, 180, 0.5),
+                0 0 10px rgba(97, 219, 180, 0.35);
+    animation: voice-pulse 1.2s ease-in-out infinite;
+}
+.voice-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+.voice-btn.transcribing {
+    background: var(--warning-bg);
+    color: var(--warning-text);
+    cursor: wait;
+    animation: none;
+}
+@keyframes voice-pulse {
+    0%, 100% { transform: scale(1); box-shadow: 0 0 0 1px rgba(196, 43, 28, 0.5), 0 0 10px rgba(196, 43, 28, 0.3); }
+    50% { transform: scale(1.06); }
+}
+.voice-spin {
+    width: 13px;
+    height: 13px;
+    border: 1.5px solid rgba(255, 183, 126, 0.3);
+    border-top-color: var(--warning-text);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    display: inline-block;
+}
+
+.pill-input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--text-primary);
+    font-size: 14px;
+    padding: 8px 8px;
+    user-select: text;
+}
+.pill-input::placeholder {
+    color: var(--text-tertiary);
+}
+
+.pill-btn-send {
+    width: 32px;
+    height: 32px;
+    border-radius: 6px;
+    background: var(--accent);
+    color: var(--on-accent);
+    border: 1px solid rgba(0, 0, 0, 0.12);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18);
+    cursor: pointer;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.12s, filter 0.12s;
+}
+.pill-btn-send:hover { background: var(--accent-hover); }
+.pill-btn-send:active { background: var(--accent-pressed); filter: brightness(0.96); }
+.pill-btn-send:disabled {
+    background: var(--layer-2);
+    color: var(--text-disabled, rgba(255, 255, 255, 0.3));
+    cursor: not-allowed;
+    filter: grayscale(0.5);
+    opacity: 0.5;
+}
+.pill-btn-send:disabled:hover { background: var(--layer-2); }
+.pill-btn-send svg { width: 16px; height: 16px; }
+
+/* ============ Status strip ============ */
+.status {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    height: 20px;
+    padding: 0 16px;
+    font-size: 11px;
+    font-weight: 400;
+    flex-shrink: 0;
+}
+.status-ready {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--accent);
+}
+.status-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    animation: pulse-soft 2s ease-in-out infinite;
+}
+.status-msg {
+    color: var(--text-secondary);
+}
+

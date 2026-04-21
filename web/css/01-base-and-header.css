@@ -1,0 +1,967 @@
+/* ============================================================
+   01-base-and-header.css
+   base + header + toolbar + docked + update banner
+   Extracted from web/style.css (lines 1-960).
+   Loading order in index.html is preserved so CSS cascade
+   resolution matches the pre-split behavior byte-for-byte.
+   ============================================================ */
+/* =========================================
+   Ghost — Windows 11 Fluent Design (Mica Dark)
+   ========================================= */
+
+:root {
+    /* Mica / layered surfaces (Win11 dark) */
+    --mica-base: #202020;
+    --mica-alt: #1c1c1c;
+    --layer-1: rgba(255, 255, 255, 0.0512);
+    --layer-2: rgba(255, 255, 255, 0.0837);
+    --layer-3: rgba(255, 255, 255, 0.1051);
+    --card-bg: rgba(255, 255, 255, 0.0512);
+    --card-bg-alt: rgba(45, 45, 45, 0.65);
+
+    /* Strokes (Fluent borders) */
+    --stroke-subtle: rgba(255, 255, 255, 0.0698);
+    --stroke-default: rgba(255, 255, 255, 0.0931);
+    --stroke-strong: rgba(255, 255, 255, 0.1395);
+
+    /* Text */
+    --text-primary: #ffffff;
+    --text-secondary: rgba(255, 255, 255, 0.786);
+    --text-tertiary: rgba(255, 255, 255, 0.5442);
+    --text-disabled: rgba(255, 255, 255, 0.3628);
+
+    /* Accent — mantém identidade Ghost (teal) mas com tratamento Fluent */
+    --accent: #61dbb4;
+    --accent-hover: #7ae4c3;
+    --accent-pressed: #52c29e;
+    --accent-rest-bg: rgba(97, 219, 180, 0.12);
+    --on-accent: #00281e;
+
+    --critical: #ff99a4;
+    --critical-bg: rgba(196, 43, 28, 0.18);
+    --critical-border: #c42b1c;
+
+    --warning: #fce100;
+    --warning-text: #ffd866;
+    --warning-bg: rgba(255, 183, 126, 0.1);
+    --warning-border: #ffb77e;
+
+    --app-alpha: 1.0;
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+html, body {
+    width: 100%;
+    height: 100vh;
+    overflow: hidden;
+    background-color: var(--mica-base);
+    margin: 0;
+    padding: 0;
+}
+
+/* ============ Scrollbar global (Windows 11 Fluent style) ============
+   Fina, translúcida, aparece mais forte no hover do container,
+   com thumb "inchada" ao passar o mouse direto nela. */
+* {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.22) transparent;
+}
+*::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+*::-webkit-scrollbar-track {
+    background: transparent;
+    border-radius: 5px;
+}
+*::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.14);
+    border-radius: 5px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+    transition: background 0.15s ease;
+}
+*:hover::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.26);
+    background-clip: padding-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.42);
+    background-clip: padding-box;
+}
+*::-webkit-scrollbar-thumb:active {
+    background: rgba(97, 219, 180, 0.55);
+    background-clip: padding-box;
+}
+*::-webkit-scrollbar-corner {
+    background: transparent;
+}
+
+/* Variante mais sutil pra blocos menores (chip flyouts etc) */
+.chip-flyout::-webkit-scrollbar,
+.target-scroll::-webkit-scrollbar,
+.transcript-body::-webkit-scrollbar,
+.modal-body::-webkit-scrollbar,
+.chat::-webkit-scrollbar,
+.compact-response::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+.msg-assistant-body pre::-webkit-scrollbar {
+    height: 8px;
+}
+
+body {
+    color: var(--text-primary);
+    font-family: 'Segoe UI Variable Display', 'Segoe UI Variable', 'Segoe UI',
+                 system-ui, -apple-system, sans-serif;
+    font-size: 14px;
+    line-height: 1.45;
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+    font-weight: 400;
+}
+
+input, textarea, button, select {
+    font: inherit;
+    color: inherit;
+}
+
+/* ============ Root layout ============ */
+.app {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    position: relative;
+    background: var(--mica-base);
+}
+
+/* ============ Compact bar mode ============ */
+.app.compact > .header,
+.app.compact > .chat {
+    display: none;
+}
+.app.compact {
+    background: rgba(26, 26, 26, 0.94);
+    backdrop-filter: blur(60px) saturate(140%);
+    -webkit-backdrop-filter: blur(60px) saturate(140%);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    box-shadow: 0 14px 32px rgba(0, 0, 0, 0.44),
+                0 0 0 1px rgba(0, 0, 0, 0.2),
+                inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    overflow: hidden;
+}
+.app.compact > .composer {
+    padding: 40px 12px 12px 12px;
+    gap: 8px;
+}
+.app.compact .chips {
+    justify-content: flex-start;
+    flex-wrap: nowrap;
+    gap: 6px;
+    padding: 0;
+}
+.app.compact .chip {
+    flex: 1 1 0;
+    min-width: 0;
+}
+.app.compact .chip-trigger {
+    min-width: 0;
+    width: 100%;
+    height: 30px;
+    font-size: 12px;
+    padding: 0 10px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.22);
+}
+.app.compact .chip-trigger:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.16);
+    border-bottom-color: rgba(255, 255, 255, 0.32);
+}
+.app.compact .chip.open .chip-trigger {
+    background: rgba(255, 255, 255, 0.12);
+    border-bottom-color: var(--accent);
+}
+.app.compact .chip-flyout {
+    /* Fixed width so it doesn't inherit the chip's stretched flex:1 width
+       (which would make the dropdown span ~400px). 240px fits the option
+       labels comfortably and visually matches the narrower trigger button. */
+    min-width: 240px;
+    width: 240px;
+    max-width: 240px;
+    max-height: calc(100vh - 70px);
+}
+.app.compact .composer-pill {
+    max-width: 100%;
+    padding: 4px;
+    background: rgba(255, 255, 255, 0.055);
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.22);
+    border-radius: 8px;
+    box-shadow: none;
+}
+.app.compact .composer-pill:focus-within {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(97, 219, 180, 0.35);
+    border-bottom-color: var(--accent);
+}
+.app.compact .pill-btn-capture,
+.app.compact .pill-btn-send {
+    width: 28px;
+    height: 28px;
+    border-radius: 5px;
+}
+.app.compact .pill-btn-send {
+    width: 30px;
+    height: 30px;
+}
+.app.compact .pill-input {
+    font-size: 13px;
+    padding: 6px 8px;
+}
+
+/* ============ Compact response area ============ */
+.compact-response {
+    flex: 1;
+    min-height: 0;
+    padding: 30px 20px 8px 20px;
+    overflow-y: auto;
+    /* Usa scrollbar global (definido no topo do arquivo) */
+}
+
+.compact-response-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+.compact-response-text {
+    font-size: 13px;
+    line-height: 1.55;
+    color: var(--text-primary);
+}
+.compact-response-text p { margin: 4px 0; }
+.compact-response-text pre {
+    max-height: 140px;
+    overflow: auto;
+}
+.compact-empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: var(--text-tertiary);
+    font-size: 12px;
+}
+
+/* Compact titlebar — estilo Windows 11 */
+.compact-controls {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 34px;
+    display: flex;
+    align-items: center;
+    gap: 0;
+    z-index: 10;
+    background: linear-gradient(to bottom,
+                                rgba(255, 255, 255, 0.035) 0%,
+                                rgba(255, 255, 255, 0.012) 60%,
+                                transparent 100%);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    padding: 0;
+}
+.compact-drag {
+    flex: 1;
+    /* Ensure the logo always has room even when many tool buttons are present. */
+    min-width: 56px;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    color: var(--text-tertiary);
+    cursor: grab;
+    padding-left: 10px;
+    padding-right: 8px;
+}
+.compact-drag > .brand-logo-compact {
+    /* Flex-shrink 0 keeps the logo from being squeezed out of view when the
+       compact bar gets crowded with tool buttons. */
+    flex-shrink: 0;
+    height: 15px;
+    width: auto;
+    pointer-events: none;
+}
+.compact-brand-dot {
+    width: 14px;
+    height: 14px;
+    background: linear-gradient(135deg, var(--accent) 0%, #3cb895 100%);
+    border-radius: 3px;
+    flex-shrink: 0;
+    box-shadow: 0 1px 2px rgba(97, 219, 180, 0.28),
+                inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+.compact-brand-text {
+    color: var(--text-primary);
+    font-weight: 600;
+    font-size: 12px;
+    letter-spacing: -0.1px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.compact-drag:active { cursor: grabbing; }
+/* Legacy rule hid any SVG inside the drag area. The brand logo IS an SVG —
+   whitelist it so the wordmark renders; other svgs (if any appear later)
+   remain hidden by default. */
+.compact-drag svg:not(.brand-logo-compact):not(.brand-logo) { display: none; }
+
+.compact-btn {
+    width: 36px;
+    height: 34px;
+    border-radius: 0;
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.1s ease, color 0.1s ease;
+    flex-shrink: 0;
+}
+.compact-btn:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--text-primary);
+}
+.compact-btn:active {
+    background: rgba(255, 255, 255, 0.05);
+}
+.compact-btn svg { width: 13px; height: 13px; }
+.compact-btn-close:hover {
+    background: #c42b1c;
+    color: #fff;
+}
+.compact-btn-close:active {
+    background: #a8241a;
+    color: rgba(255, 255, 255, 0.8);
+}
+.compact-btn.active-tertiary {
+    background: var(--accent-rest-bg);
+    color: var(--accent);
+}
+.compact-btn.active-tertiary:hover {
+    background: rgba(97, 219, 180, 0.22);
+    color: var(--accent);
+}
+.compact-btn.recording {
+    background: rgba(196, 43, 28, 0.18);
+    color: #ff99a4;
+}
+.compact-btn.recording:hover { background: rgba(196, 43, 28, 0.28); }
+.compact-btn.processing {
+    background: var(--warning-bg);
+    color: var(--warning-text);
+    cursor: wait;
+}
+.compact-btn { position: relative; }
+.compact-btn .tool-dot {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 5px rgba(97, 219, 180, 0.7);
+    animation: pulse-soft 1.4s ease-in-out infinite;
+    pointer-events: none;
+}
+.compact-btn .tool-dot-rec {
+    background: #ff5555;
+    box-shadow: 0 0 5px rgba(255, 85, 85, 0.75);
+    animation: pulse-soft 1s ease-in-out infinite;
+}
+.compact-divider {
+    width: 1px;
+    height: 16px;
+    background: rgba(255, 255, 255, 0.1);
+    margin: 0 4px;
+    flex-shrink: 0;
+}
+
+/* Content fade with opacity slider */
+.chat,
+.composer,
+.status {
+    opacity: var(--app-alpha, 1);
+    transition: opacity 0.08s linear;
+}
+
+/* ============ Header (title bar estilo Windows 11) ============ */
+.header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    height: 40px;
+    padding: 0 0 0 14px;
+    background: transparent;
+    border-bottom: 1px solid var(--stroke-subtle);
+    user-select: none;
+    flex-shrink: 0;
+    cursor: grab;
+}
+.header:active { cursor: grabbing; }
+
+.brand {
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: -0.1px;
+    color: var(--text-primary);
+    pointer-events: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+/* .brand::before substituído por um <span class="brand-dot pixel-ghost-mini">
+   no HTML (fantasminha animado em vez do quadradinho verde) */
+
+/* Update banner — shown below the header when GitHub has a newer release. */
+.update-banner {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    background: linear-gradient(90deg, rgba(97, 219, 180, 0.12), rgba(60, 184, 149, 0.12));
+    border-bottom: 1px solid rgba(97, 219, 180, 0.28);
+    color: var(--text-primary);
+    font-size: 11.5px;
+    flex-shrink: 0;
+}
+.update-banner-icon { width: 14px; height: 14px; color: var(--accent); flex-shrink: 0; }
+.update-banner-text { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.update-banner-text strong { color: var(--accent); font-weight: 600; }
+.update-banner-sub { color: var(--text-tertiary); margin-left: 6px; }
+.update-banner-btn {
+    padding: 3px 10px;
+    border-radius: 4px;
+    border: 1px solid rgba(97, 219, 180, 0.35);
+    background: var(--accent);
+    color: var(--on-accent);
+    font-weight: 600;
+    font-size: 11px;
+    cursor: pointer;
+}
+.update-banner-btn:hover { filter: brightness(1.08); }
+.update-banner-close {
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    background: transparent;
+    border: none;
+    color: var(--text-tertiary);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 3px;
+}
+.update-banner-close:hover { background: rgba(255, 255, 255, 0.08); color: var(--text-primary); }
+.update-banner-close svg { width: 11px; height: 11px; }
+
+/* In compact mode the app shell is 200px tall and the banner would normally
+   sit below the tool-button row, taking precious vertical space. Pin it to
+   the very top of the window, floating over the entire bar with its own
+   slim row — the user notices the update, can dismiss, and the main UI
+   keeps its real estate. */
+.app.compact .update-banner {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 1000;
+    padding: 4px 8px;
+    font-size: 11px;
+    border-bottom: 1px solid rgba(97, 219, 180, 0.4);
+    background: linear-gradient(90deg, rgba(97, 219, 180, 0.18), rgba(60, 184, 149, 0.15));
+}
+.app.compact .update-banner-btn { padding: 2px 8px; font-size: 10.5px; }
+.app.compact .update-banner-btn-secondary { width: 20px; height: 20px; }
+.app.compact .update-banner-close { width: 18px; height: 18px; }
+/* When the update banner is visible in compact mode, push the tool-button
+   row down so the banner (fixed at top) doesn't cover it. */
+.app.compact.update-banner-active .compact-controls { top: 28px; }
+
+.update-banner-btn-secondary {
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border-radius: 4px;
+    border: 1px solid rgba(97, 219, 180, 0.35);
+    background: transparent;
+    color: var(--accent);
+    font-weight: 700;
+    cursor: pointer;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.update-banner-btn-secondary:hover {
+    background: rgba(97, 219, 180, 0.12);
+}
+
+/* Progress bar shown while the installer is downloading. */
+.update-banner-progress {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+.update-banner-progress-label {
+    font-size: 11px;
+    color: var(--text-secondary);
+    display: flex;
+    gap: 6px;
+    align-items: center;
+}
+.update-banner-progress-label strong { color: var(--accent); font-weight: 600; }
+.update-banner-progress-track {
+    width: 100%;
+    height: 4px;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 2px;
+    overflow: hidden;
+}
+.update-banner-progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent), #3cb895);
+    transition: width 0.2s ease;
+}
+
+.brand-logo {
+    height: 18px;
+    width: auto;
+    display: block;
+    pointer-events: none;
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+/* Logo only in maximized mode (sidebar top). Window mode keeps a lean
+   header with just the toolbar + titlebar controls. When the logo is
+   hidden, .header's `justify-content: space-between` would otherwise leave
+   .header-actions anchored to the left with a big blank gap on the right —
+   push it back to the right via margin-left: auto so the toolbar reads as
+   a normal right-aligned title bar. */
+.app:not(.maximized) .brand-logo {
+    display: none;
+}
+.app:not(.maximized) .header-actions {
+    margin-left: auto;
+}
+.brand-logo-compact {
+    height: 14px;
+}
+
+.header-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    height: 100%;
+}
+
+.header-action-group {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding-right: 8px;
+}
+
+.header-window-controls {
+    display: flex;
+    align-items: center;
+    height: 100%;
+    border-left: 1px solid var(--stroke-subtle);
+    padding-left: 0;
+    margin-left: 4px;
+}
+
+/* Docked state */
+.docked-icon {
+    width: 100vw;
+    height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, var(--accent), #3cb895);
+    color: var(--on-accent);
+    cursor: pointer;
+    user-select: none;
+    transition: filter 0.15s, transform 0.1s;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.15),
+                -2px 0 10px rgba(0, 0, 0, 0.4);
+    border-top-left-radius: 8px;
+    border-bottom-left-radius: 8px;
+}
+.docked-icon:hover { filter: brightness(1.12); }
+.docked-icon:active { transform: scale(0.96); }
+.docked-glyph {
+    width: 55%;
+    height: 55%;
+    filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.35));
+}
+.docked-icon:hover { filter: brightness(1.12); }
+.docked-icon:active { transform: scale(0.96); }
+.docked-glyph {
+    width: 55%;
+    height: 55%;
+    filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.35));
+}
+
+/* Fluent accent pill button */
+.btn-nova {
+    background: var(--accent);
+    color: var(--on-accent);
+    border: 1px solid rgba(0, 0, 0, 0.12);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2);
+    padding: 4px 14px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0;
+    cursor: pointer;
+    transition: background 0.12s ease, filter 0.12s ease;
+    height: 28px;
+    display: inline-flex;
+    align-items: center;
+}
+.btn-nova:hover { background: var(--accent-hover); }
+.btn-nova:active { background: var(--accent-pressed); filter: brightness(0.95); }
+
+/* Toolbar buttons — padrão Fluent icon-only no header */
+.tool-btn {
+    position: relative;
+    width: 32px;
+    height: 28px;
+    border-radius: 4px;
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+    flex-shrink: 0;
+}
+.tool-btn:hover:not(:disabled) {
+    background: var(--layer-2);
+    color: var(--text-primary);
+}
+.tool-btn:active:not(:disabled) { background: var(--layer-1); }
+.tool-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.tool-btn.locked,
+.compact-btn.locked,
+.pill-btn-capture.locked {
+    opacity: 0.42;
+    cursor: not-allowed;
+    color: var(--text-tertiary);
+}
+.tool-btn.locked:hover,
+.compact-btn.locked:hover,
+.pill-btn-capture.locked:hover {
+    background: transparent;
+    color: var(--text-tertiary);
+    border-color: transparent;
+}
+
+/* Mini cadeado no canto superior direito dos botões locked */
+.tool-lock {
+    position: absolute;
+    top: 1px;
+    right: 1px;
+    width: 10px;
+    height: 10px;
+    background: var(--warning-text);
+    -webkit-mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'><rect x='2' y='4.2' width='6' height='4.8' rx='0.8' fill='black'/><path d='M3.5 4.2V2.8a1.5 1.5 0 013 0V4.2' stroke='black' stroke-width='1.1' fill='none'/></svg>") center/contain no-repeat;
+            mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'><rect x='2' y='4.2' width='6' height='4.8' rx='0.8' fill='black'/><path d='M3.5 4.2V2.8a1.5 1.5 0 013 0V4.2' stroke='black' stroke-width='1.1' fill='none'/></svg>") center/contain no-repeat;
+    pointer-events: none;
+    filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.55));
+    opacity: 0.92;
+}
+.tool-btn svg { width: 14px; height: 14px; }
+
+.tool-btn.active {
+    background: var(--accent-rest-bg);
+    color: var(--accent);
+    border-color: rgba(97, 219, 180, 0.28);
+}
+.tool-btn.active:hover { background: rgba(97, 219, 180, 0.2); }
+
+.tool-btn.recording {
+    background: rgba(196, 43, 28, 0.18);
+    color: #ff99a4;
+    border-color: rgba(196, 43, 28, 0.45);
+}
+.tool-btn.recording:hover { background: rgba(196, 43, 28, 0.28); }
+.tool-btn.processing {
+    background: var(--warning-bg);
+    color: var(--warning-text);
+    border-color: var(--warning-border);
+    cursor: wait;
+}
+
+/* Small pulse indicator overlay */
+.tool-btn .tool-dot {
+    position: absolute;
+    top: 3px;
+    right: 3px;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 6px rgba(97, 219, 180, 0.7);
+    animation: pulse-soft 1.4s ease-in-out infinite;
+    pointer-events: none;
+}
+.tool-btn .tool-dot-rec {
+    background: #ff5555;
+    box-shadow: 0 0 6px rgba(255, 85, 85, 0.75);
+    animation: pulse-soft 1s ease-in-out infinite;
+}
+
+/* Divisor vertical entre clusters de botões */
+.tool-divider {
+    width: 1px;
+    height: 18px;
+    background: rgba(255, 255, 255, 0.1);
+    margin: 0 4px;
+    flex-shrink: 0;
+}
+
+/* ============ Toolbar sections (Features | Visibilidade | Ações) ============
+   In window mode: sections render as a flat row (labels hidden), matching the
+   previous layout. In maximized mode: each section stacks a small label above
+   its icon row, with a visible vertical divider between sections. */
+.tool-section {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+}
+.tool-section-row {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+}
+.tool-section-label {
+    display: none;  /* hidden in window mode */
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    color: var(--text-tertiary);
+    padding: 0 6px 2px;
+}
+.tool-section-divider {
+    width: 1px;
+    height: 18px;
+    background: rgba(255, 255, 255, 0.1);
+    margin: 0 4px;
+    flex-shrink: 0;
+}
+
+/* Window (non-maximized) mode used to have ONE divider between the
+   feature/visibility cluster and the actions cluster. The section rewrite
+   introduced a second divider (between Features and Visibilidade) which
+   changed the horizontal rhythm. Hide the first divider in window mode so
+   the toolbar reads exactly like it did pre-sidebar-refactor. Maximized mode
+   restores both dividers (handled below under .app.maximized rules). */
+.app:not(.maximized) .header-action-group > .tool-section-divider:first-of-type {
+    display: none;
+}
+
+/* ============ MAXIMIZED MODE — left sidebar layout (ChatGPT-style) ============
+   In maximized mode the window fills the monitor work area, so we repurpose
+   the header into a LEFT SIDEBAR. Brand + tool sections stack vertically in
+   a 260px column, chat + composer fill the rest. Window controls (dock,
+   minimize, close) float to the top-right via absolute positioning. */
+
+.app.maximized {
+    /* Keep the base flex-column layout so chat flex:1 still fills vertical
+       space. The header is absolutely positioned as a 260px sidebar on the
+       left; padding-left on the container reserves that space for every
+       flow child (main, composer, banners). */
+    position: relative;
+    height: 100vh;
+    padding-left: 260px;
+    overflow: hidden;
+}
+
+/* The header becomes an absolutely-positioned sidebar on the left. */
+.app.maximized > .header {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 260px;
+    height: 100vh;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+    padding: 28px 16px 20px;
+    gap: 28px;
+    background: rgba(0, 0, 0, 0.22);
+    border-right: 1px solid rgba(255, 255, 255, 0.05);
+    overflow-y: auto;
+    overflow-x: hidden;
+    z-index: 10;
+}
+
+/* Brand logo: smaller at the top of sidebar */
+.app.maximized .brand-logo {
+    width: 88px;
+    height: auto;
+    margin: 0 6px 6px;
+    flex-shrink: 0;
+}
+
+/* Actions stack vertically inside the sidebar */
+.app.maximized .header-actions {
+    flex-direction: column;
+    align-items: stretch;
+    width: 100%;
+    gap: 22px;
+    flex: 1;
+    min-height: 0;
+}
+
+.app.maximized .header-action-group {
+    flex-direction: column;
+    align-items: stretch;
+    width: 100%;
+    gap: 18px;
+}
+
+/* Window controls (dock / minimize / close) float top-right of the viewport,
+   outside the sidebar. `position: absolute` would be relative to the sidebar
+   (.header is itself position:absolute), which made the buttons render inside
+   the sidebar column. `fixed` pins them to the viewport so they land in the
+   actual top-right corner of the chat area. */
+.app.maximized .header-window-controls {
+    position: fixed;
+    top: 12px;
+    right: 14px;
+    z-index: 50;
+    /* Override the window-mode defaults so the fixed container shrinks to
+       its content instead of stretching to 100vh (which would center the
+       icons vertically in the middle of the viewport). */
+    height: auto;
+    border-left: none;
+    margin-left: 0;
+    padding-left: 0;
+}
+
+/* Tool sections stack vertically with labels + full-width buttons */
+.app.maximized .tool-section {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 4px;
+}
+.app.maximized .tool-section-label {
+    display: block;
+    padding: 0 10px 6px;
+    font-size: 10.5px;
+    color: var(--text-tertiary);
+}
+.app.maximized .tool-section-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 2px;
+    width: 100%;
+}
+
+/* Divider between sections in the sidebar */
+.app.maximized .tool-section-divider {
+    height: 1px;
+    width: 100%;
+    margin: 4px 0;
+    background: rgba(255, 255, 255, 0.05);
+}
+
+/* Tool buttons become full-width rows: icon left, label right */
+.app.maximized .tool-btn {
+    width: 100%;
+    height: 36px;
+    padding: 0 12px;
+    justify-content: flex-start;
+    flex-direction: row;
+    gap: 12px;
+    border-radius: 8px;
+}
+.app.maximized .tool-btn::after {
+    content: attr(data-label);
+    font-size: 13.5px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    flex: 1;
+    text-align: left;
+}
+.app.maximized .tool-btn:hover::after {
+    color: var(--text-primary);
+}
+.app.maximized .tool-btn.active,
+.app.maximized .tool-btn.recording {
+    background: rgba(97, 219, 180, 0.12);
+}
+.app.maximized .tool-btn.active::after,
+.app.maximized .tool-btn.recording::after {
+    color: var(--accent);
+}
+
+/* The tool-dot stays a tiny pulse, but anchors to the right in maximized */
+.app.maximized .tool-btn .tool-dot,
+.app.maximized .tool-btn .tool-dot-rec {
+    position: static;
+    margin-left: auto;
+    flex-shrink: 0;
+}
+
+/* Chat + composer fill the full available width (sidebar already consumes
+   260px on the left via .app.maximized's padding-left). On very wide screens
+   we cap the readable content at ~960px via symmetric auto padding, so text
+   stays comfortable to read while the element itself still spans edge-to-edge
+   (no dead click zones, scrollbar sits flush with the right edge). On narrow
+   widths the padding falls back to 24px so everything fits. */
+.app.maximized > main,
+.app.maximized > .chat {
+    width: 100%;
+    max-width: none;
+    padding-left: max(24px, calc((100% - 960px) / 2));
+    padding-right: max(24px, calc((100% - 960px) / 2));
+}
+.app.maximized > .composer {
+    width: 100%;
+    max-width: none;
+    padding-left: max(16px, calc((100% - 960px) / 2));
+    padding-right: max(16px, calc((100% - 960px) / 2));
+}
+
+/* Empty-state needs an explicit reference height inside a max-width-less
+   flex child; without it the vertical centering sometimes collapses and the
+   ghost icon drifts to a corner. */
+.app.maximized .empty-state {
+    min-height: 100%;
+}
+
+/* Header action icon button (Settings) */
+.btn-icon {

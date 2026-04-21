@@ -1,0 +1,984 @@
+/* ============================================================
+   04-modals.css
+   modal dialog, settings, shortcuts, close confirm
+   Extracted from web/style.css (lines 2081-3057).
+   Loading order in index.html is preserved so CSS cascade
+   resolution matches the pre-split behavior byte-for-byte.
+   ============================================================ */
+/* ============ Modal (Fluent dialog) ============ */
+.modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.4);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+}
+.modal {
+    width: min(480px, calc(100% - 32px));
+    max-height: calc(100vh - 48px);
+    background: #2b2b2b;
+    border: 1px solid var(--stroke-strong);
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    box-shadow: 0 32px 64px rgba(0, 0, 0, 0.52),
+                0 0 0 1px rgba(0, 0, 0, 0.22);
+}
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 20px 4px 20px;
+}
+.modal-header h2 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text-primary);
+    letter-spacing: -0.2px;
+}
+.modal-body {
+    padding: 8px 20px 20px 20px;
+    overflow-y: auto;
+}
+.modal-hint {
+    font-size: 13px;
+    color: var(--text-secondary);
+    line-height: 1.5;
+    padding: 10px 12px;
+    background: var(--warning-bg);
+    border: 1px solid rgba(255, 183, 126, 0.25);
+    border-radius: 4px;
+    margin-bottom: 16px;
+}
+.modal-hint strong { color: var(--text-primary); }
+
+/* ---- Meeting modal: critical pre-start instruction block ----
+   Surfaces the "select the right tab/app" rule before the user clicks start,
+   since picking the wrong target (e.g. recording a browser tab that gets
+   reused for email mid-meeting) silently ruins the recording. */
+.meeting-warning {
+    display: flex;
+    gap: 12px;
+    padding: 12px 14px;
+    margin-bottom: 14px;
+    background: rgba(97, 219, 180, 0.08);
+    border: 1px solid rgba(97, 219, 180, 0.35);
+    border-left: 3px solid var(--accent);
+    border-radius: 6px;
+    color: var(--text-primary);
+    font-size: 13px;
+    line-height: 1.55;
+}
+.meeting-warning-icon {
+    font-size: 18px;
+    flex-shrink: 0;
+    line-height: 1.3;
+}
+.meeting-warning-body { flex: 1; min-width: 0; }
+.meeting-warning-body strong { color: var(--text-primary); }
+.meeting-warning-list {
+    margin: 8px 0 0;
+    padding-left: 18px;
+    color: var(--text-secondary);
+}
+.meeting-warning-list li { margin-bottom: 6px; }
+.meeting-warning-list li:last-child { margin-bottom: 0; }
+.meeting-warning-list kbd {
+    font-family: inherit;
+    font-size: 11px;
+    padding: 1px 5px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 3px;
+    color: var(--text-primary);
+}
+
+/* ---- BETA markers ----
+   Two variants:
+   - .beta-badge: inline pill next to modal/section titles (prominent, static)
+   - .beta-pill:  smaller pill inside .tool-btn, only visible in maximized mode
+                  (in window mode, BETA comes through the hover tooltip instead) */
+.beta-badge {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.6px;
+    padding: 2px 7px;
+    margin-left: 8px;
+    border-radius: 999px;
+    background: rgba(97, 219, 180, 0.18);
+    color: var(--accent);
+    border: 1px solid rgba(97, 219, 180, 0.45);
+    vertical-align: middle;
+    text-transform: uppercase;
+}
+.beta-pill {
+    display: none;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.6px;
+    padding: 1px 5px;
+    border-radius: 999px;
+    background: rgba(97, 219, 180, 0.15);
+    color: var(--accent);
+    border: 1px solid rgba(97, 219, 180, 0.4);
+    text-transform: uppercase;
+    line-height: 1.3;
+    flex-shrink: 0;
+}
+/* Only surface .beta-pill in maximized mode, positioned between the label
+   and the recording dot (which uses margin-left: auto to push itself to the
+   right-most spot). In window mode the pill stays hidden and the BETA marker
+   surfaces via the hover tooltip. */
+.app.maximized .tool-btn.beta-feature .beta-pill {
+    display: inline-block;
+}
+.modal-section-label {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.1px;
+    color: var(--text-primary);
+    margin-bottom: 8px;
+}
+.target-group { margin-bottom: 14px; }
+.target-group-title {
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+    padding-left: 2px;
+}
+.target-scroll {
+    max-height: 220px;
+    overflow-y: auto;
+    border: 1px solid var(--stroke-default);
+    border-radius: 4px;
+    background: var(--layer-1);
+}
+.target-option {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    cursor: pointer;
+    transition: background 0.1s;
+}
+.target-option:hover { background: var(--layer-2); }
+.target-option input[type="radio"] { accent-color: var(--accent); }
+.target-icon { font-size: 16px; }
+.target-text {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    flex: 1;
+    min-width: 0;
+}
+.target-text strong {
+    font-size: 13px;
+    color: var(--text-primary);
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.target-meta {
+    font-size: 11px;
+    color: var(--text-tertiary);
+    font-family: 'Cascadia Code', monospace;
+}
+
+.modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 12px 20px 16px 20px;
+    border-top: 1px solid var(--stroke-subtle);
+}
+
+/* Fluent buttons */
+.modal-btn-secondary, .modal-btn-primary {
+    padding: 6px 22px;
+    border-radius: 4px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    height: 32px;
+    transition: background 0.12s ease, border-color 0.12s ease;
+}
+.modal-btn-secondary {
+    background: var(--layer-1);
+    color: var(--text-primary);
+    border: 1px solid var(--stroke-default);
+    border-bottom: 1px solid var(--stroke-strong);
+}
+.modal-btn-secondary:hover {
+    background: var(--layer-2);
+    border-color: var(--stroke-strong);
+}
+.modal-btn-primary {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: #c42b1c;
+    color: #fff;
+    border: 1px solid rgba(0, 0, 0, 0.14);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14);
+}
+.modal-btn-primary:hover { background: #b8271c; }
+.modal-btn-primary:active { background: #a8241a; filter: brightness(0.96); }
+
+/* ============ Settings modal ============ */
+.settings-section { display: flex; flex-direction: column; gap: 10px; }
+.settings-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+.settings-hint {
+    font-size: 13px;
+    color: var(--text-secondary);
+    line-height: 1.5;
+    margin: 0;
+}
+.settings-hint a { color: var(--accent); text-decoration: none; font-weight: 500; }
+.settings-hint a:hover { text-decoration: underline; }
+
+.settings-current {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    background: var(--accent-rest-bg);
+    border: 1px solid rgba(97, 219, 180, 0.28);
+    border-radius: 4px;
+    font-size: 12px;
+    color: var(--text-primary);
+}
+.settings-current code {
+    font-family: 'Cascadia Code', 'Consolas', monospace;
+    color: var(--accent);
+    flex: 1;
+    font-size: 12px;
+}
+.clear-btn {
+    font-size: 12px;
+    font-weight: 500;
+    padding: 4px 12px;
+    border-radius: 4px;
+    background: var(--layer-1);
+    color: var(--critical);
+    border: 1px solid rgba(196, 43, 28, 0.35);
+    cursor: pointer;
+    height: 26px;
+    transition: background 0.12s;
+}
+.clear-btn:hover { background: var(--critical-bg); }
+
+.settings-input-row { display: flex; gap: 8px; }
+.settings-input {
+    flex: 1;
+    background: var(--layer-1);
+    border: 1px solid var(--stroke-default);
+    border-bottom: 1px solid var(--stroke-strong);
+    border-radius: 4px;
+    padding: 6px 10px;
+    color: var(--text-primary);
+    font-size: 13px;
+    font-family: 'Cascadia Code', 'Consolas', monospace;
+    height: 32px;
+    transition: border-color 0.12s;
+}
+.settings-input:focus {
+    outline: none;
+    border-bottom-color: var(--accent);
+    background: var(--layer-2);
+}
+.settings-paste-btn {
+    padding: 0 16px;
+    border-radius: 4px;
+    background: var(--layer-1);
+    color: var(--text-primary);
+    border: 1px solid var(--stroke-default);
+    border-bottom: 1px solid var(--stroke-strong);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    height: 32px;
+    transition: background 0.12s, border-color 0.12s;
+}
+.settings-paste-btn:hover:not(:disabled) {
+    background: var(--layer-2);
+    border-color: var(--stroke-strong);
+}
+.settings-paste-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.settings-sub-hint {
+    font-size: 12px;
+    color: var(--text-tertiary);
+    line-height: 1.5;
+    margin-top: 4px;
+}
+.settings-sub-hint strong { color: var(--accent); font-weight: 600; }
+
+.settings-save-btn {
+    padding: 0 18px;
+    border-radius: 4px;
+    background: var(--accent);
+    color: var(--on-accent);
+    border: 1px solid rgba(0, 0, 0, 0.14);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    height: 32px;
+    transition: background 0.12s, filter 0.12s;
+}
+.settings-save-btn:hover:not(:disabled) { background: var(--accent-hover); }
+.settings-save-btn:active:not(:disabled) { background: var(--accent-pressed); filter: brightness(0.95); }
+.settings-save-btn:disabled {
+    background: var(--layer-2);
+    color: var(--text-disabled);
+    cursor: not-allowed;
+    box-shadow: none;
+    border-color: var(--stroke-default);
+}
+
+.settings-error {
+    font-size: 12px;
+    color: var(--critical);
+    padding: 8px 12px;
+    background: var(--critical-bg);
+    border: 1px solid rgba(196, 43, 28, 0.35);
+    border-radius: 4px;
+}
+.settings-success {
+    font-size: 12px;
+    color: var(--accent);
+    padding: 8px 12px;
+    background: var(--accent-rest-bg);
+    border: 1px solid rgba(97, 219, 180, 0.3);
+    border-radius: 4px;
+}
+.settings-warning {
+    font-size: 12px;
+    color: var(--warning-text);
+    padding: 8px 12px;
+    background: var(--warning-bg);
+    border: 1px solid rgba(255, 183, 126, 0.3);
+    border-radius: 4px;
+    margin-top: 6px;
+}
+
+.settings-perms {
+    margin-top: 8px;
+    padding: 12px;
+    background: var(--layer-1);
+    border: 1px solid var(--stroke-default);
+    border-radius: 4px;
+}
+.settings-perms-title {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+}
+.perm-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--critical);
+    padding: 2px 0;
+}
+.perm-row.ok { color: var(--accent); }
+.perm-row.warn { color: var(--warning-text); }
+
+/* Currency block — linha de seletor + cotação abaixo */
+.currency-block {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px 12px;
+    background: var(--layer-1);
+    border: 1px solid var(--stroke-default);
+    border-radius: 6px;
+    margin-top: 8px;
+}
+.currency-picker-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+.currency-row-icon {
+    width: 18px;
+    height: 18px;
+    color: var(--accent);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+.currency-row-icon svg { width: 18px; height: 18px; }
+.currency-label {
+    font-size: 12.5px;
+    color: var(--text-primary);
+    font-weight: 600;
+    flex-shrink: 0;
+}
+.chip-currency .chip-trigger {
+    min-width: 180px;
+    padding: 0 10px 0 10px;
+    gap: 8px;
+}
+.currency-flag {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--accent);
+    min-width: 22px;
+    text-align: center;
+    font-family: 'Cascadia Code', 'Consolas', monospace;
+    flex-shrink: 0;
+    letter-spacing: -0.5px;
+}
+
+/* Rate display (badge + meta) */
+.rate-display {
+    padding-top: 6px;
+    border-top: 1px dashed var(--stroke-subtle);
+}
+.rate-badge-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+.rate-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 12px;
+    background: var(--accent-rest-bg);
+    border: 1px solid rgba(97, 219, 180, 0.32);
+    border-radius: 14px;
+    font-family: 'Cascadia Code', 'Consolas', monospace;
+    font-size: 12.5px;
+}
+.rate-from {
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+.rate-arrow {
+    color: var(--text-tertiary);
+    font-size: 11px;
+}
+.rate-to {
+    color: var(--accent);
+    font-weight: 700;
+    letter-spacing: 0.2px;
+}
+.rate-meta {
+    font-size: 10.5px;
+    color: var(--text-tertiary);
+    letter-spacing: 0.2px;
+}
+.rate-loading {
+    font-size: 11px;
+    color: var(--text-tertiary);
+    font-style: italic;
+}
+
+/* Model picker — cards agrupados por tier com preço concreto */
+.model-group {
+    margin-top: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+.model-group:first-child { margin-top: 8px; }
+
+.model-group-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.6px;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+    padding: 0 2px 4px 2px;
+    border-bottom: 1px solid var(--stroke-subtle);
+    margin-bottom: 3px;
+}
+.model-group-icon { font-size: 12px; }
+.model-group-label { color: var(--text-secondary); }
+
+.model-card {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 12px;
+    background: var(--layer-1);
+    border: 1px solid var(--stroke-default);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.12s, border-color 0.12s, box-shadow 0.12s;
+    position: relative;
+}
+.model-card:hover {
+    background: var(--layer-2);
+    border-color: var(--stroke-strong);
+}
+.model-card.selected {
+    background: var(--accent-rest-bg);
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent), 0 4px 12px rgba(97, 219, 180, 0.12);
+}
+.model-card input[type="radio"] {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+}
+
+/* Checkmark indicator (substituí o radio nativo) */
+.model-card-check {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    border: 2px solid var(--stroke-strong);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    margin-top: 2px;
+    transition: border-color 0.12s, background 0.12s;
+}
+.model-card.selected .model-card-check {
+    border-color: var(--accent);
+    background: var(--accent);
+    color: var(--on-accent);
+}
+.model-card-check svg { width: 12px; height: 12px; }
+
+.model-card-body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+}
+.model-card-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.model-card-name {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+.model-card-desc {
+    font-size: 12px;
+    color: var(--text-secondary);
+    line-height: 1.45;
+}
+
+/* Custo destacado em verde accent */
+.model-card-cost {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 5px;
+    padding: 4px 10px;
+    background: rgba(97, 219, 180, 0.08);
+    border-radius: 14px;
+    align-self: flex-start;
+    margin-top: 2px;
+}
+.cost-amount {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--accent);
+    font-family: 'Cascadia Code', 'Consolas', monospace;
+}
+.cost-converted {
+    font-size: 11.5px;
+    color: var(--text-secondary);
+    font-family: 'Cascadia Code', 'Consolas', monospace;
+    font-weight: 500;
+}
+.cost-unit {
+    font-size: 11px;
+    color: var(--text-secondary);
+}
+
+/* Badges */
+.model-badge {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+}
+.badge-recommended {
+    color: var(--warning-text);
+    background: var(--warning-bg);
+    border: 1px solid rgba(255, 183, 126, 0.38);
+}
+.badge-active {
+    color: var(--accent);
+    background: rgba(97, 219, 180, 0.2);
+    border: 1px solid rgba(97, 219, 180, 0.45);
+}
+
+/* Rodapé informativo sobre preços */
+.pricing-footer {
+    display: flex;
+    align-items: flex-start;
+    gap: 7px;
+    margin-top: 12px;
+    padding: 8px 10px;
+    background: var(--warning-bg);
+    border: 1px solid rgba(255, 183, 126, 0.22);
+    border-radius: 6px;
+    font-size: 11.5px;
+    color: var(--text-secondary);
+    line-height: 1.45;
+}
+.pricing-footer-icon {
+    width: 13px;
+    height: 13px;
+    color: var(--warning-text);
+    flex-shrink: 0;
+    margin-top: 1px;
+}
+.pricing-footer a {
+    color: var(--accent);
+    text-decoration: none;
+    font-weight: 600;
+}
+.pricing-footer a:hover { text-decoration: underline; }
+
+/* ============ API Key notice card (mostrado no chat quando falta chave) ============ */
+.api-key-notice {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    padding: 16px 18px;
+    background: linear-gradient(135deg,
+                                rgba(255, 183, 126, 0.12) 0%,
+                                rgba(97, 219, 180, 0.08) 100%);
+    border: 1px solid rgba(255, 183, 126, 0.3);
+    border-radius: 10px;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.22);
+    max-width: 92%;
+}
+.api-key-notice-icon {
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    background: var(--warning-bg);
+    border: 1px solid rgba(255, 183, 126, 0.45);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--warning-text);
+    flex-shrink: 0;
+}
+.api-key-notice-icon svg {
+    width: 20px;
+    height: 20px;
+}
+.api-key-notice-body {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.api-key-notice-title {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--text-primary);
+    letter-spacing: -0.1px;
+}
+.api-key-notice-desc {
+    font-size: 13px;
+    color: var(--text-secondary);
+    line-height: 1.5;
+    margin: 0;
+}
+.api-key-notice-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 2px;
+}
+.notice-btn-primary,
+.notice-btn-secondary {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 14px;
+    border-radius: 5px;
+    font-size: 12.5px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.12s, border-color 0.12s, filter 0.12s;
+    height: 32px;
+}
+.notice-btn-primary {
+    background: var(--accent);
+    color: var(--on-accent);
+    border: 1px solid rgba(0, 0, 0, 0.14);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18),
+                0 2px 6px rgba(97, 219, 180, 0.28);
+}
+.notice-btn-primary:hover { background: var(--accent-hover); }
+.notice-btn-primary:active { background: var(--accent-pressed); filter: brightness(0.95); }
+.notice-btn-primary svg { width: 12px; height: 12px; }
+
+.notice-btn-secondary {
+    background: var(--layer-2);
+    color: var(--text-primary);
+    border: 1px solid var(--stroke-default);
+    border-bottom: 1px solid var(--stroke-strong);
+}
+.notice-btn-secondary:hover {
+    background: var(--layer-3);
+    border-color: var(--stroke-strong);
+}
+.notice-btn-secondary svg { width: 12px; height: 12px; }
+
+.api-key-notice-hint {
+    font-size: 11.5px;
+    color: var(--text-tertiary);
+    line-height: 1.4;
+    margin: 2px 0 0 0;
+    font-style: italic;
+}
+
+/* ============ Shortcuts modal ============ */
+.shortcuts-modal { width: min(520px, calc(100% - 32px)); }
+
+.shortcut-group {
+    margin-bottom: 18px;
+}
+.shortcut-group:last-child { margin-bottom: 12px; }
+
+.shortcut-group-title {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.6px;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+    padding: 0 2px 8px 2px;
+    border-bottom: 1px solid var(--stroke-subtle);
+    margin-bottom: 8px;
+}
+.shortcut-group-icon {
+    font-size: 13px;
+}
+.shortcut-group-hint {
+    font-size: 10px;
+    color: var(--text-tertiary);
+    font-weight: 400;
+    text-transform: none;
+    letter-spacing: 0.2px;
+    margin-left: 4px;
+}
+
+.shortcut-row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 7px 2px;
+    border-radius: 4px;
+}
+.shortcut-row:hover { background: var(--layer-1); }
+
+.shortcut-keys {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    flex-shrink: 0;
+    min-width: 140px;
+    justify-content: flex-end;
+}
+.shortcut-desc {
+    flex: 1;
+    font-size: 12.5px;
+    color: var(--text-primary);
+    line-height: 1.4;
+}
+
+/* Keyboard key visual — Windows 11 style */
+kbd {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 24px;
+    height: 24px;
+    padding: 0 6px;
+    background: var(--layer-2);
+    border: 1px solid var(--stroke-strong);
+    border-bottom-width: 2px;
+    border-bottom-color: var(--stroke-strong);
+    border-radius: 4px;
+    font-family: 'Segoe UI Variable', system-ui, sans-serif;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-primary);
+    box-shadow: 0 1px 0 rgba(0, 0, 0, 0.3);
+    text-align: center;
+    line-height: 1;
+}
+kbd.kbd-wide {
+    min-width: auto;
+    padding: 0 9px;
+    font-size: 10.5px;
+}
+.kbd-inline {
+    height: 18px;
+    min-width: 20px;
+    font-size: 10px;
+    padding: 0 4px;
+    border-bottom-width: 1px;
+    vertical-align: middle;
+}
+.kbd-plus {
+    color: var(--text-tertiary);
+    font-size: 11px;
+    font-weight: 500;
+    margin: 0 1px;
+}
+.kbd-sep {
+    color: var(--text-tertiary);
+    font-size: 12px;
+    margin: 0 4px;
+}
+
+.shortcuts-footnote {
+    margin-top: 16px;
+    padding: 10px 12px;
+    background: var(--accent-rest-bg);
+    border: 1px solid rgba(97, 219, 180, 0.22);
+    border-radius: 6px;
+    font-size: 11.5px;
+    color: var(--text-secondary);
+    line-height: 1.5;
+}
+
+/* ============ Close confirmation modal ============ */
+.close-confirm-modal { width: min(460px, calc(100% - 32px)); }
+
+.close-confirm-intro {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin: 0 0 14px 0;
+}
+
+.close-option-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.close-option {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 14px;
+    background: var(--layer-1);
+    border: 1px solid var(--stroke-default);
+    border-bottom: 1px solid var(--stroke-strong);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.12s, border-color 0.12s, transform 0.1s;
+    text-align: left;
+    font: inherit;
+    color: inherit;
+    width: 100%;
+}
+.close-option:hover {
+    background: var(--layer-2);
+    border-color: var(--stroke-strong);
+}
+.close-option:active {
+    transform: scale(0.99);
+}
+.close-option-hide:hover {
+    border-color: var(--accent);
+    border-bottom-color: var(--accent);
+}
+.close-option-exit:hover {
+    border-color: #c42b1c;
+    border-bottom-color: #c42b1c;
+    background: rgba(196, 43, 28, 0.08);
+}
+
+.close-option-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    background: var(--layer-2);
+    border: 1px solid var(--stroke-default);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-primary);
+    flex-shrink: 0;
+}
+.close-option-icon svg {
+    width: 20px;
+    height: 20px;
+}
+.close-option-hide:hover .close-option-icon {
+    background: var(--accent-rest-bg);
+    border-color: rgba(97, 219, 180, 0.35);
+    color: var(--accent);
+}
+.close-option-icon-danger {
+    background: var(--critical-bg);
+    border-color: rgba(196, 43, 28, 0.4);
+    color: #ff99a4;
+}
+.close-option-exit:hover .close-option-icon-danger {
+    background: rgba(196, 43, 28, 0.28);
+    border-color: #c42b1c;
+}
+
+.close-option-body {
+    flex: 1;
+    min-width: 0;
+}
+.close-option-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 4px;
+}
+.close-option-exit .close-option-title {
+    color: var(--text-primary);
+}
+.close-option-desc {
+    font-size: 12px;
+    color: var(--text-secondary);
+    line-height: 1.45;
+}
+

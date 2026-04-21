@@ -1,0 +1,367 @@
+/* ============================================================
+   05-misc.css
+   quick actions, drag overlay, live Q&A, history, tooltip
+   Extracted from web/style.css (lines 3058-3417).
+   Loading order in index.html is preserved so CSS cascade
+   resolution matches the pre-split behavior byte-for-byte.
+   ============================================================ */
+/* ============ Quick actions (botões abaixo da resposta) ============ */
+.quick-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    margin-top: 10px;
+    padding-top: 8px;
+    border-top: 1px dashed var(--stroke-subtle);
+}
+.quick-action {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    background: var(--layer-1);
+    color: var(--text-secondary);
+    border: 1px solid var(--stroke-default);
+    border-radius: 12px;
+    font-size: 11.5px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.12s, color 0.12s, border-color 0.12s, transform 0.1s;
+}
+.quick-action:hover {
+    background: var(--accent-rest-bg);
+    color: var(--accent);
+    border-color: rgba(97, 219, 180, 0.4);
+}
+.quick-action:active { transform: scale(0.96); }
+.quick-action span { font-size: 11px; }
+
+/* ============ Dropped files chips ============ */
+.dropped-files {
+    max-width: 560px;
+    margin: 0 auto;
+    width: 100%;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 6px 10px;
+    background: var(--layer-1);
+    border: 1px solid var(--stroke-default);
+    border-bottom: 1px solid var(--stroke-strong);
+    border-radius: 6px;
+}
+.dropped-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 6px 3px 8px;
+    background: var(--layer-2);
+    border: 1px solid var(--stroke-strong);
+    border-radius: 14px;
+    font-size: 11.5px;
+    color: var(--text-primary);
+    max-width: 240px;
+}
+.dropped-chip.is-image { padding: 3px 6px 3px 3px; }
+.dropped-icon { width: 12px; height: 12px; color: var(--accent); flex-shrink: 0; }
+.dropped-thumb {
+    width: 24px;
+    height: 24px;
+    border-radius: 10px;
+    object-fit: cover;
+    flex-shrink: 0;
+}
+.dropped-name {
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.dropped-note {
+    font-size: 10px;
+    color: var(--text-tertiary);
+    white-space: nowrap;
+}
+.dropped-remove {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: transparent;
+    border: none;
+    color: var(--text-tertiary);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.12s, color 0.12s;
+}
+.dropped-remove:hover {
+    background: rgba(255, 85, 85, 0.2);
+    color: #ff8e8e;
+}
+.dropped-remove svg { width: 8px; height: 8px; }
+
+/* ============ Drag overlay ============ */
+.drag-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(97, 219, 180, 0.18);
+    backdrop-filter: blur(8px);
+    border: 3px dashed var(--accent);
+    z-index: 5000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    animation: drag-pulse 1.2s ease-in-out infinite;
+}
+@keyframes drag-pulse {
+    0%, 100% { background-color: rgba(97, 219, 180, 0.18); }
+    50% { background-color: rgba(97, 219, 180, 0.28); }
+}
+.drag-overlay-inner {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    color: var(--accent);
+}
+.drag-overlay svg { width: 64px; height: 64px; }
+.drag-overlay-title {
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: -0.3px;
+}
+.drag-overlay-hint {
+    font-size: 13px;
+    color: var(--text-primary);
+    opacity: 0.8;
+}
+
+/* ============ Live Q&A during meeting ============ */
+.meeting-qa {
+    max-width: 560px;
+    margin: 0 auto;
+    width: 100%;
+    padding: 8px 12px 10px;
+    background: rgba(196, 43, 28, 0.08);
+    border: 1px solid rgba(196, 43, 28, 0.35);
+    border-radius: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.meeting-qa-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
+    color: #ff99a4;
+}
+.meeting-qa-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #ff5555;
+    animation: pulse-soft 1s ease-in-out infinite;
+}
+.meeting-qa-row {
+    display: flex;
+    gap: 6px;
+}
+.meeting-qa-input {
+    flex: 1;
+    background: var(--layer-1);
+    border: 1px solid var(--stroke-default);
+    border-bottom: 1px solid var(--stroke-strong);
+    border-radius: 5px;
+    padding: 6px 10px;
+    color: var(--text-primary);
+    font-size: 12.5px;
+    height: 30px;
+}
+.meeting-qa-input:focus {
+    outline: none;
+    border-bottom-color: var(--accent);
+}
+.meeting-qa-btn {
+    padding: 0 14px;
+    border-radius: 5px;
+    background: var(--accent);
+    color: var(--on-accent);
+    border: 1px solid rgba(0, 0, 0, 0.14);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    height: 30px;
+    min-width: 100px;
+}
+.meeting-qa-btn:hover:not(:disabled) { background: var(--accent-hover); }
+.meeting-qa-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ============ History modal ============ */
+.history-modal { width: min(540px, calc(100% - 32px)); }
+.history-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 40px 20px;
+    text-align: center;
+    color: var(--text-tertiary);
+}
+.history-empty-icon { font-size: 36px; }
+.history-empty-hint { font-size: 11.5px; opacity: 0.7; }
+.history-list { display: flex; flex-direction: column; gap: 4px; }
+.history-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    background: var(--layer-1);
+    border: 1px solid var(--stroke-default);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.12s, border-color 0.12s;
+}
+.history-item:hover {
+    background: var(--layer-2);
+    border-color: var(--stroke-strong);
+}
+.history-item.active {
+    background: var(--accent-rest-bg);
+    border-color: var(--accent);
+}
+.history-item-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.history-item-title {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.history-item-meta {
+    font-size: 10.5px;
+    color: var(--text-tertiary);
+    font-family: 'Cascadia Code', 'Consolas', monospace;
+    display: flex;
+    gap: 6px;
+}
+.history-dot { opacity: 0.5; }
+.history-item-delete {
+    width: 28px;
+    height: 28px;
+    border-radius: 4px;
+    background: transparent;
+    border: none;
+    color: var(--text-tertiary);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.12s, color 0.12s;
+    flex-shrink: 0;
+}
+.history-item-delete:hover {
+    background: rgba(255, 85, 85, 0.2);
+    color: #ff8e8e;
+}
+.history-item-delete svg { width: 13px; height: 13px; }
+
+/* ============ Sensitive info modal ============ */
+.sensitive-modal { width: min(480px, calc(100% - 32px)); }
+.sensitive-intro {
+    font-size: 13px;
+    color: var(--text-primary);
+    margin-bottom: 12px;
+    line-height: 1.5;
+}
+.sensitive-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+.sensitive-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background: var(--warning-bg);
+    border: 1px solid rgba(255, 183, 126, 0.4);
+    border-radius: 6px;
+    font-size: 12px;
+    flex-wrap: wrap;
+}
+.sensitive-type {
+    font-weight: 700;
+    color: var(--warning-text);
+    letter-spacing: 0.2px;
+}
+.sensitive-count {
+    font-size: 11px;
+    color: var(--text-secondary);
+}
+.sensitive-sample {
+    font-family: 'Cascadia Code', 'Consolas', monospace;
+    background: rgba(0, 0, 0, 0.35);
+    padding: 2px 7px;
+    border-radius: 4px;
+    font-size: 11px;
+    margin-left: auto;
+    color: var(--text-primary);
+}
+.sensitive-hint {
+    font-size: 11.5px;
+    color: var(--text-secondary);
+    background: var(--layer-1);
+    padding: 8px 10px;
+    border-radius: 5px;
+    line-height: 1.45;
+    border-left: 2px solid var(--warning-text);
+}
+
+/* Streaming cursor (pisca no final da msg durante streaming) */
+.msg-assistant-body.streaming::after {
+    content: '';
+    display: inline-block;
+    width: 2px;
+    height: 1em;
+    background: var(--accent);
+    margin-left: 2px;
+    vertical-align: text-bottom;
+    animation: stream-cursor 0.8s steps(2) infinite;
+}
+@keyframes stream-cursor {
+    0%, 50% { opacity: 1; }
+    51%, 100% { opacity: 0; }
+}
+
+/* ============ Custom tooltips (JS-driven, position:fixed escapa overflow) ============ */
+.gtooltip {
+    position: fixed;
+    z-index: 10000;
+    pointer-events: none;
+    opacity: 0;
+    transform: translateY(2px);
+    transition: opacity 0.12s ease, transform 0.12s ease;
+    background: rgba(42, 42, 42, 0.98);
+    color: #fff;
+    padding: 6px 10px;
+    font-size: 11.5px;
+    font-weight: 500;
+    line-height: 1.35;
+    border-radius: 4px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    white-space: normal;
+    max-width: 260px;
+    width: max-content;
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.48),
+                0 0 0 1px rgba(0, 0, 0, 0.28);
+}
+.gtooltip.visible {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+/* Hidden until needed */
+[x-cloak] { display: none !important; }
