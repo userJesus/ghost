@@ -7,6 +7,9 @@
     <meta http-equiv="Expires" content="0">
     <title>Ghost · Conversa</title>
     <script src="vendor/marked.min.js"></script>
+    <!-- Shared helpers (escapeHTML, stripMarkdown, tooltip manager, TTS voice picker).
+         Must load after marked and before the page's inline script block. -->
+    <script src="shared/common.js"></script>
     <link rel="stylesheet" href="pixel-ghost.css?v=1.0.12">
     <style>
         :root {
@@ -553,26 +556,8 @@
             if (btn && _autoSpeak) btn.classList.add('active-tts');
         } catch (e) {}
 
-        function escapeHTML(s) {
-            const div = document.createElement('div');
-            div.textContent = s;
-            return div.innerHTML;
-        }
-
-        function stripMarkdown(md) {
-            if (!md) return '';
-            try {
-                const html = marked.parse(md);
-                const div = document.createElement('div');
-                div.innerHTML = html;
-                div.querySelectorAll('pre, code').forEach(el => {
-                    el.replaceWith(document.createTextNode(' código omitido. '));
-                });
-                return (div.textContent || '').replace(/\s+/g, ' ').trim();
-            } catch (e) {
-                return md.replace(/[*_`#>\-\[\]()]/g, ' ').replace(/\s+/g, ' ').trim();
-            }
-        }
+        // escapeHTML() and stripMarkdown() now come from web/shared/common.js
+        // (loaded in <head>). Identical behavior; single source of truth.
 
         let _ttsAudio = null;
 

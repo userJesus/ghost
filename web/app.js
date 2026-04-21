@@ -18,6 +18,7 @@ function ghostApp() {
         meetingStatusText: '',
         meetingModalOpen: false,
         meetingTarget: '',
+        meetingFilterMonitor: 1,
         availableWindows: [],
         _meetingTimer: null,
         statusMessage: '',
@@ -1640,22 +1641,32 @@ function ghostApp() {
         },
 
         async _openMeetingModal() {
-            this.setStatus('Listando janelas de reunião...');
+            this.setStatus('Listando janelas...');
             try {
-                // Only show windows that look like a meeting app or a
-                // browser tab on a meeting platform. Prevents the user
-                // from accidentally targeting unrelated apps (editor,
-                // file manager) and capturing silent audio for 30 minutes.
                 this.availableWindows = await window.pywebview.api.list_meeting_windows() || [];
             } catch (e) {
                 this.availableWindows = [];
             }
-            // Default: current monitor
             if (this.monitors.length) {
-                this.meetingTarget = 'monitor:' + this.monitors[0].index;
+                const first = this.monitors[0].index;
+                this.meetingTarget = 'monitor:' + first;
+                this.meetingFilterMonitor = first;
             }
             this.meetingModalOpen = true;
             this.setStatus('Configure e inicie');
+        },
+
+        // Windows on the monitor the user is currently inspecting in the
+        // meeting modal. Called from the template.
+        windowsForSelectedMonitor() {
+            return this.availableWindows.filter(w => w.monitor === this.meetingFilterMonitor);
+        },
+
+        // Radio-click handler for a monitor option: selects the monitor as
+        // the target AND filters the window list below to that monitor.
+        selectMeetingMonitor(idx) {
+            this.meetingFilterMonitor = idx;
+            this.meetingTarget = 'monitor:' + idx;
         },
 
         async confirmMeetingStart() {
@@ -1944,19 +1955,31 @@ function ghostApp() {
                 this.busy = true;
                 this.inputText = '';
                 this.messages.push({ role: 'user', text: q });
+                // Typing placeholder. Must mutate through the array proxy
+                // (this.messages[idx].x = ...) — mutating a local ref to the
+                // raw object bypasses Alpine's reactivity and the dots stay
+                // forever even after the response arrives.
+                this.messages.push({ role: 'assistant', text: '', loading: true });
+                const loadingIdx = this.messages.length - 1;
                 this.scrollToBottom();
                 try {
                     const r = await window.pywebview.api.meeting_live_question(q);
-                    if (!r?.ok) {
-                        this.messages.push({ role: 'assistant', text: '(erro: ' + (r?.error || 'falha') + ')' });
-                    } else {
-                        this.messages.push({ role: 'assistant', text: r.text || '(sem resposta)' });
+                    const m = this.messages[loadingIdx];
+                    if (m) {
+                        m.loading = false;
+                        m.text = r?.ok
+                            ? (r.text || '(sem resposta)')
+                            : ('(erro: ' + (r?.error || 'falha') + ')');
                     }
                     this.scrollToBottom();
                     this._persistHistory();
                     this._maybeAutoSpeak();
                 } catch (e) {
-                    this.messages.push({ role: 'assistant', text: '(erro: ' + (e?.message || e) + ')' });
+                    const m = this.messages[loadingIdx];
+                    if (m) {
+                        m.loading = false;
+                        m.text = '(erro: ' + (e?.message || e) + ')';
+                    }
                 } finally {
                     this.busy = false;
                 }

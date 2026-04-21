@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ghost"
-version = "1.1.10"
+version = "1.1.11"
 description = "Ghost — a Windows desktop AI assistant built with pywebview, Python, Alpine.js and OpenAI. macOS port planned. Non-commercial use only."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -111,8 +111,20 @@ ignore = ["E501"]
 "test/**" = ["N802", "N803", "N806", "SIM", "B", "A"]
 # Win32 constants and idiomatic Windows code use uppercase names (SWP_NOMOVE etc.)
 "src/win_focus.py" = ["N806", "SIM105"]
+"src/platform/windows/focus.py" = ["N806", "SIM105"]
+"src/platform/windows/preflight.py" = ["N806"]
+# Win32 SDK constants (CREATE_NO_WINDOW, CREATE_NEW_PROCESS_GROUP, etc.)
+# used in the installer-launch path.
+"src/services/update_service.py" = ["N806"]
 "src/api.py" = ["N806", "SIM105"]
 "main.py" = ["N806", "SIM105"]
+# Copies of pre-refactor code — inherit the pre-refactor lint tolerance.
+# These files were moved into the new package structure via `cp`, so the
+# same rules that allowed them before still apply. Refactoring their
+# content is out of scope for the 2026-04 architecture pass.
+"src/cloner/web_cloner.py" = ["E701", "E702", "N806", "SIM103", "SIM105"]
+"src/capture_pkg/scroll.py" = ["B905"]
+"src/recording/meeting_recorder.py" = ["N806"]
 
 [tool.ruff.format]
 quote-style = "double"

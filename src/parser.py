@@ -1,20 +1,11 @@
-import re
+"""Backwards-compatible re-export of the moved markdown parser."""
+from __future__ import annotations
 
-CODE_BLOCK_RE = re.compile(r"```([a-zA-Z0-9_+\-]*)\n(.*?)```", re.DOTALL)
+from .domain.markdown_parser import (
+    CODE_BLOCK_RE,
+    extract_code_blocks,
+    pick_main_code,
+    strip_code_blocks,
+)
 
-
-def extract_code_blocks(text: str) -> list[tuple[str, str]]:
-    """Return list of (language, code) tuples from markdown code fences."""
-    return [(lang.strip(), code.rstrip()) for lang, code in CODE_BLOCK_RE.findall(text)]
-
-
-def strip_code_blocks(text: str) -> str:
-    """Return text with code blocks replaced by a placeholder."""
-    return CODE_BLOCK_RE.sub("[código abaixo]", text).strip()
-
-
-def pick_main_code(blocks: list[tuple[str, str]]) -> tuple[str, str] | None:
-    """Return the largest code block, assumed to be the main answer."""
-    if not blocks:
-        return None
-    return max(blocks, key=lambda b: len(b[1]))
+__all__ = ["CODE_BLOCK_RE", "extract_code_blocks", "strip_code_blocks", "pick_main_code"]

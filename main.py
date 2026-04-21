@@ -12,6 +12,11 @@ import win32gui
 import win32process
 
 from src.api import GhostAPI
+from src.bootstrap import (
+    preflight_cleanup_webview2 as _bootstrap_preflight,
+    check_webview2_runtime as _bootstrap_check_runtime,
+)
+from src.infra.paths import USER_DATA  # single-source-of-truth ~/.ghost path
 from src.win_focus import (
     hide_from_capture,
     hide_from_taskbar,
@@ -26,10 +31,6 @@ if sys.platform != "win32":
         "Ghost currently ships for Windows only. A macOS port is planned — "
         "see the roadmap in README.md."
     )
-
-# User-data folder — same across platforms, matches history.py/logging_config.py/config.py.
-# Windows resolves ~ to %USERPROFILE% (e.g. C:\Users\<user>\.ghost).
-USER_DATA = Path.home() / ".ghost"
 
 def _resolve_resource_root() -> Path:
     """Find where bundled web/ + assets/ live at runtime.
@@ -325,123 +326,20 @@ def _watch_show_event_windows(hwnd_getter):
 # Startup bulletproofing
 # =============================================================================
 
-def _slog(msg: str) -> None:
-    """Append a timestamped line to ghost.log so we can diagnose startup crashes
-    from a user's log even when stderr redirect failed."""
-    try:
-        USER_DATA.mkdir(parents=True, exist_ok=True)
-        log = USER_DATA / "ghost.log"
-        with open(log, "a", encoding="utf-8") as f:
-            f.write(f"[{datetime.now().isoformat()}] [startup] {msg}\n")
-    except Exception:
-        pass
-    # Also mirror to stderr (may be redirected to log file later)
-    print(f"[startup] {msg}", flush=True)
-
-
-def _show_error_box(title: str, message: str) -> None:
-    """Native Win32 MessageBox to surface startup errors to the user. Without
-    this, a crash in webview.create_window/start is silent and the user just
-    sees the app "not open" with no clue what happened."""
-    try:
-        import ctypes
-        MB_OK = 0x00000000
-        MB_ICONERROR = 0x00000010
-        MB_TOPMOST = 0x00040000
-        ctypes.windll.user32.MessageBoxW(
-            None, message, title, MB_OK | MB_ICONERROR | MB_TOPMOST
-        )
-    except Exception:
-        pass
+# _slog and _show_error_box are thin aliases into src.bootstrap so there's a
+# single implementation of each. The underscore names are preserved because
+# several log-line consumers (CLAUDE.md regression watchlist, grep patterns in
+# operational runbooks) match on "[startup] ..." lines emitted by _slog.
+from src.bootstrap import slog as _slog, show_error_box as _show_error_box  # noqa: E402,I001
 
 
 def _preflight_cleanup_webview2() -> None:
-    """Before creating any webview window, forcibly clean up state from
-    previous Ghost sessions. Without this, rapid close→reopen cycles leave
-    zombie helpers holding locks on the WebView2 UserData folder and DLLs,
-    causing the new instance's UI thread to hang ("Ghost não está respondendo").
+    """Kill zombie WebView2 helpers + sweep orphan caches before fresh init.
 
-    Approach: fire taskkill for each helper image, then sleep a fixed 600ms
-    to let the OS finish tearing down. A previous version of this function
-    polled `tasklist` until helpers were gone — but each tasklist call takes
-    ~200ms and we were calling it 30+ times, blocking startup for 6-8 seconds
-    and triggering the very "not responding" state we were trying to prevent.
-    A fixed wait is both faster AND more reliable."""
-    CREATE_NO_WINDOW = 0x08000000
-
-    # Kill webview2 + CefSharp helpers by name. Safe — Ghost is the primary
-    # webview2 user here; any other app using webview2 will simply relaunch
-    # its own helper processes.
-    for image in ("msedgewebview2.exe", "WebView2Host.exe",
-                  "CefSharp.BrowserSubprocess.exe"):
-        try:
-            r = subprocess.run(
-                ["taskkill", "/F", "/IM", image],
-                capture_output=True, timeout=3,
-                creationflags=CREATE_NO_WINDOW,
-            )
-            if r.returncode == 0:
-                _slog(f"preflight: killed stale {image}")
-        except Exception as e:
-            _slog(f"preflight: taskkill {image} error: {e}")
-
-    # Fixed 600ms settle so the OS can finish releasing file handles from the
-    # processes we just killed. Empirically this is plenty — processes tear
-    # down in ~100-300ms on modern Windows. No polling needed.
-    time.sleep(0.6)
-
-    # Orphan-cache sweep: pywebview creates a fresh `%TEMP%\tmp<random>\EBWebView`
-    # folder per session via tempfile.mkdtemp and never removes it. Over time
-    # (crashes, force-kills, dev restarts) these accumulate — we've seen 200+
-    # folders pile up, each ~50-80MB, which besides wasting disk actually starts
-    # slowing WebView2 initialization (the runtime apparently scans/walks temp).
-    # Safe to nuke now: we just killed every msedgewebview2 process above, so
-    # nothing holds locks on these dirs. We're conservative and only delete
-    # folders that (a) match the tempfile mkdtemp pattern and (b) contain an
-    # EBWebView subdir — anyone else's tmp stays untouched.
-    try:
-        import glob
-        import shutil
-        temp_root = os.environ.get("TEMP") or os.environ.get("TMP")
-        if temp_root and os.path.isdir(temp_root):
-            # Two-pass sweep: first pass deletes what it can; second pass
-            # retries dirs that failed (usually because a webview2 child was
-            # still tearing down). Between passes we wait an extra beat so
-            # the OS can finish releasing handles from the taskkills above.
-            # We always log — both success counts and leftovers — so post-
-            # update crash reports carry enough signal to diagnose a "my new
-            # Ghost didn't start" issue without forcing the user to send
-            # stderr dumps.
-            remaining = []
-            swept_total = 0
-            for pass_idx in range(2):
-                swept_pass = 0
-                leftovers = []
-                for candidate in glob.glob(os.path.join(temp_root, "tmp*")):
-                    # Only act on dirs that look like pywebview's WebView2
-                    # UserData temps — presence of EBWebView child proves it.
-                    if not os.path.isdir(os.path.join(candidate, "EBWebView")):
-                        continue
-                    shutil.rmtree(candidate, ignore_errors=True)
-                    if os.path.isdir(candidate):
-                        leftovers.append(candidate)
-                    else:
-                        swept_pass += 1
-                swept_total += swept_pass
-                remaining = leftovers
-                if not leftovers:
-                    break
-                # Second chance: give the OS 400ms to release any stragglers.
-                time.sleep(0.4)
-            if swept_total:
-                _slog(f"preflight: swept {swept_total} orphan WebView2 cache dir(s)")
-            if remaining:
-                # Non-fatal but important signal for diagnosing post-update
-                # crashes — a locked cache dir means a webview2 handle leaked
-                # somewhere and the new session might race against it.
-                _slog(f"preflight: WARNING {len(remaining)} cache dir(s) could not be deleted (locked?); first: {remaining[0]}")
-    except Exception as e:
-        _slog(f"preflight: cache sweep error (non-fatal): {e}")
+    Implementation lives in `src.platform.windows.preflight` — this function
+    is a thin wrapper preserved for call-site stability.
+    """
+    _bootstrap_preflight()
 
 
 _GHOST_JOB_HANDLE = None  # keep the Job Object handle alive for process lifetime
@@ -558,37 +456,12 @@ def _assign_process_to_kill_on_close_job() -> bool:
 
 
 def _check_webview2_runtime() -> bool:
-    """Return True if the WebView2 runtime is installed. If not, show a
-    MessageBox pointing the user to the evergreen installer URL.
+    """Return True if the WebView2 runtime is installed.
 
-    Without the runtime Edge-Chromium backend won't load and pywebview will
-    fail deep inside its C++ bindings with a confusing error."""
-    try:
-        import winreg
-        # Evergreen WebView2 registers under HKLM\SOFTWARE\WOW6432Node\...
-        paths = [
-            r"SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}",
-            r"SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}",
-        ]
-        for p in paths:
-            try:
-                k = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, p)
-                winreg.CloseKey(k)
-                return True
-            except OSError:
-                continue
-        # Per-user install
-        for p in paths:
-            try:
-                k = winreg.OpenKey(winreg.HKEY_CURRENT_USER, p)
-                winreg.CloseKey(k)
-                return True
-            except OSError:
-                continue
-        return False
-    except Exception:
-        # If we can't check, assume it's there to avoid false alarms
-        return True
+    Implementation lives in `src.platform.windows.preflight` — thin wrapper
+    preserved for call-site stability.
+    """
+    return _bootstrap_check_runtime()
 
 
 def main():

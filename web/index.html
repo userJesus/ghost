@@ -13,6 +13,9 @@
     <link rel="stylesheet" href="pixel-ghost.css?v=1.0.13">
     <script defer src="vendor/alpine.min.js"></script>
     <script src="vendor/marked.min.js"></script>
+    <!-- Shared helpers (escapeHTML, stripMarkdown, tooltip manager, TTS voice picker).
+         Must load after marked and before app.js / inline page scripts. -->
+    <script src="shared/common.js"></script>
 </head>
 <body x-data="ghostApp()" x-init="init()" x-cloak>
 <!-- Safety net: remove x-cloak após 3s mesmo se Alpine falhar -->
@@ -1095,10 +1098,12 @@
             <div class="target-group">
                 <div class="target-group-title">Monitores</div>
                 <template x-for="m in monitors" :key="'mon-' + m.index">
-                    <label class="target-option">
+                    <label class="target-option"
+                           :class="{ 'target-option-active': meetingFilterMonitor === m.index }">
                         <input type="radio" name="mtarget"
                                :value="'monitor:' + m.index"
-                               x-model="meetingTarget">
+                               :checked="meetingTarget === 'monitor:' + m.index"
+                               @change="selectMeetingMonitor(m.index)">
                         <span class="target-icon">🖥</span>
                         <span class="target-text">
                             <strong x-text="'Monitor ' + m.index"></strong>
@@ -1109,26 +1114,31 @@
             </div>
 
             <div class="target-group">
-                <div class="target-group-title">Janelas de reunião detectadas</div>
-                <div class="target-scroll" x-show="availableWindows.length > 0">
-                    <template x-for="w in availableWindows" :key="'win-' + w.hwnd">
+                <div class="target-group-title">
+                    Janelas no monitor selecionado
+                </div>
+                <div class="target-scroll" x-show="windowsForSelectedMonitor().length > 0">
+                    <template x-for="w in windowsForSelectedMonitor()" :key="'win-' + w.hwnd">
                         <label class="target-option">
                             <input type="radio" name="mtarget"
                                    :value="'window:' + w.hwnd"
                                    x-model="meetingTarget">
-                            <span class="target-icon">🪟</span>
+                            <span class="target-icon" x-text="w.is_meeting ? '🎙' : '🪟'"></span>
                             <span class="target-text">
                                 <strong x-text="w.title"></strong>
-                                <span class="target-meta" x-text="w.width + '×' + w.height"></span>
+                                <span class="target-meta">
+                                    <span x-text="w.width + '×' + w.height"></span>
+                                    <span x-show="w.is_meeting" style="color: var(--accent); margin-left: 6px;">· reunião detectada</span>
+                                </span>
                             </span>
                         </label>
                     </template>
                 </div>
-                <p class="modal-hint" x-show="availableWindows.length === 0"
+                <p class="modal-hint" x-show="windowsForSelectedMonitor().length === 0"
                    style="font-size:12px;opacity:0.75;margin:6px 2px 0;">
-                    Nenhuma janela de reunião aberta. Abra uma chamada no Google Meet,
-                    Teams, Zoom, Webex, Slack, Discord, Jitsi ou similar — ou deixe
-                    no monitor inteiro acima.
+                    Nenhuma janela aberta neste monitor. Selecione outro monitor acima
+                    ou deixe como "Monitor <span x-text="meetingFilterMonitor"></span>"
+                    para capturar a tela inteira.
                 </p>
             </div>
         </div>

@@ -9,6 +9,8 @@ from datetime import datetime
 from pathlib import Path
 
 from . import history as _history
+from PIL import Image
+
 from .capture import capture_fullscreen, capture_region, image_to_base64, image_to_data_url
 from .clone import WebCloner, clones_dir
 from .config import PRESETS
@@ -188,6 +190,19 @@ class GhostAPI:
         self._dropdown_window = None
         self._dropdown_hwnd = 0
 
+        # ----- Application services (facade composition) ------------------
+        # Bridge methods below delegate to these. Each service owns one
+        # cohesive feature and can be unit-tested independently of the
+        # pywebview bridge. Services receive a `window_getter` callable so
+        # they can push progress events / JS callbacks without holding a
+        # stale window reference when Ghost recreates it.
+        from .services.history_service import HistoryService
+        from .services.settings_service import SettingsService
+        from .services.update_service import UpdateService
+        self._update_svc = UpdateService(lambda: self._window)
+        self._settings_svc = SettingsService()
+        self._history_svc = HistoryService()
+
     def set_window(self, window):
         self._window = window
 
@@ -354,205 +369,7 @@ class GhostAPI:
         `window.setUpdateProgress(pct)`.
         """
         try:
-            import subprocess
-            import tempfile
-            import urllib.request
-            from pathlib import Path as _Path
-            from .version import GITHUB_REPO_URL, __version__
-
-            if sys.platform == "win32":
-                asset_name = "GhostSetup.exe"
-            elif sys.platform == "darwin":
-                asset_name = "GhostInstaller.pkg"
-            else:
-                return {"error": f"auto-update not supported on {sys.platform}"}
-
-            url = f"{GITHUB_REPO_URL}/releases/latest/download/{asset_name}"
-            tmpdir = _Path(tempfile.gettempdir()) / "ghost-update"
-            tmpdir.mkdir(parents=True, exist_ok=True)
-            target = tmpdir / asset_name
-
-            # ---------- download with progress ----------
-            req = urllib.request.Request(
-                url, headers={"User-Agent": f"Ghost/{__version__}"}
-            )
-            last_pct = -1
-            with urllib.request.urlopen(req, timeout=30) as resp:
-                total = int(resp.headers.get("Content-Length", 0))
-                with open(target, "wb") as f:
-                    downloaded = 0
-                    while True:
-                        chunk = resp.read(65536)
-                        if not chunk:
-                            break
-                        f.write(chunk)
-                        downloaded += len(chunk)
-                        if total:
-                            pct = int(downloaded * 100 / total)
-                            # Throttle to every 2% so we don't spam evaluate_js.
-                            if pct >= last_pct + 2:
-                                last_pct = pct
-                                try:
-                                    if self._window is not None:
-                                        self._window.evaluate_js(
-                                            f"window.setUpdateProgress({pct})"
-                                        )
-                                except Exception:
-                                    pass
-
-            # Report 100% before launching.
-            try:
-                if self._window is not None:
-                    self._window.evaluate_js("window.setUpdateProgress(100)")
-            except Exception:
-                pass
-
-            # ---------- launch installer + self-exit ----------
-            #
-            # Architecture lessons learned the hard way:
-            #
-            # 1. `cmd /c timeout /t 3 && installer` FAILS silently when spawned
-            #    with DETACHED_PROCESS: timeout needs a console, it fails,
-            #    `&&` short-circuits, installer never runs.
-            #
-            # 2. `taskkill /F /T /PID <self>` (tree kill) KILLS the PowerShell
-            #    helper because PS is a direct descendant of our Python. So the
-            #    3s delay never completes — installer never launches.
-            #
-            # 3. `-WindowStyle Hidden` passed to Start-Process inside the PS
-            #    helper HIDES the installer's own UI window. User sees nothing,
-            #    and in some cases Inno Setup fails to run at all because
-            #    /SILENT still needs a visible progress dialog.
-            #
-            # Correct approach:
-            #   a) Kill WebView2 helper processes BY NAME (not tree), so they
-            #      release the UserData folder + libsndfile_x64.dll.
-            #   b) Sleep ~1s for OS to release file handles.
-            #   c) Spawn PowerShell helper detached — PS window itself stays
-            #      hidden, but it launches the installer in NORMAL window mode
-            #      so the user sees the Inno Setup progress dialog.
-            #   d) Log every step to ~/.ghost/updater.log so failures are
-            #      diagnosable next time.
-            #   e) `os._exit(0)` WITHOUT `taskkill /T` — our Python dies cleanly
-            #      (releasing the mutex + our DLL handles), PS survives as an
-            #      orphan, completes its 2s delay, launches installer, installer
-            #      /RESTARTAPPLICATIONS relaunches Ghost.
-            if sys.platform == "win32":
-                if not target.exists() or target.stat().st_size < 1024:
-                    return {"error": f"installer download failed or truncated: {target}"}
-
-                import datetime as _dt
-                updater_log = Path.home() / ".ghost" / "updater.log"
-                updater_log.parent.mkdir(parents=True, exist_ok=True)
-
-                def _ulog(msg: str):
-                    try:
-                        with open(updater_log, "a", encoding="utf-8") as f:
-                            f.write(f"[{_dt.datetime.now().isoformat()}] {msg}\n")
-                    except Exception:
-                        pass
-
-                _ulog("=" * 60)
-                _ulog(f"update start: target={target}, size={target.stat().st_size}")
-
-                # NOTE: do NOT pass DETACHED_PROCESS when spawning PowerShell.
-                # Combined with CREATE_NO_WINDOW it causes PowerShell to fail
-                # silently (PS starts but immediately exits, never running our
-                # script). Tested: with DETACHED_PROCESS | CREATE_NO_WINDOW,
-                # logs never get written; without DETACHED_PROCESS they do.
-                # PS doesn't need DETACHED_PROCESS to survive our exit — it
-                # just needs to not be in our process tree for taskkill, and
-                # since we no longer call taskkill /T, plain Popen suffices.
-                CREATE_NEW_PROCESS_GROUP = 0x00000200
-                CREATE_NO_WINDOW = 0x08000000
-                helper_flags = CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW
-
-                # (a) Kill WebView2 helpers globally by name — not tree — so our
-                #     PowerShell child survives. Ghost is the only known user of
-                #     WebView2 at this install; killing by name is safe.
-                for image in ("msedgewebview2.exe", "WebView2Host.exe"):
-                    try:
-                        result = subprocess.run(
-                            ["taskkill", "/F", "/IM", image],
-                            capture_output=True, timeout=4,
-                            creationflags=CREATE_NO_WINDOW,
-                        )
-                        _ulog(f"taskkill {image}: rc={result.returncode}")
-                    except Exception as e:
-                        _ulog(f"taskkill {image} error: {e}")
-
-                # (b) Brief pause for OS to release file handles the webview had
-                time.sleep(0.8)
-
-                # (c) PowerShell helper: short delay then launch installer with
-                #     visible progress window. NO -WindowStyle Hidden on the
-                #     installer — user sees the Inno Setup progress dialog.
-                helper_log = str(updater_log).replace("'", "''")
-                installer_path = str(target).replace("'", "''")
-                ps_script = (
-                    "$ErrorActionPreference='Continue'; "
-                    f"'[ps] waking after sleep' | Out-File -FilePath '{helper_log}' -Append -Encoding utf8; "
-                    "Start-Sleep -Seconds 2; "
-                    "try { "
-                    f"  $p = Start-Process -FilePath '{installer_path}' "
-                    "   -ArgumentList '/SILENT','/CLOSEAPPLICATIONS',"
-                    "   '/FORCECLOSEAPPLICATIONS','/RESTARTAPPLICATIONS' "
-                    "   -PassThru -ErrorAction Stop; "
-                    f"  \"[ps] installer launched pid=$($p.Id)\" | Out-File -FilePath '{helper_log}' -Append -Encoding utf8; "
-                    "} catch { "
-                    f"  \"[ps] FAILED: $($_.Exception.Message)\" | Out-File -FilePath '{helper_log}' -Append -Encoding utf8; "
-                    "}"
-                )
-
-                try:
-                    ps = subprocess.Popen(
-                        ["powershell.exe", "-NoProfile", "-NonInteractive",
-                         "-WindowStyle", "Hidden", "-ExecutionPolicy", "Bypass",
-                         "-Command", ps_script],
-                        creationflags=helper_flags,
-                        close_fds=True,
-                    )
-                    _ulog(f"powershell spawned: pid={ps.pid}")
-                except FileNotFoundError as e:
-                    _ulog(f"powershell not found: {e} — falling back to direct launch")
-                    # Fallback: spawn installer directly; it'll race us a bit
-                    # but Inno Setup's /CLOSEAPPLICATIONS handles our process.
-                    subprocess.Popen(
-                        [str(target), "/SILENT", "/CLOSEAPPLICATIONS",
-                         "/FORCECLOSEAPPLICATIONS", "/RESTARTAPPLICATIONS"],
-                        creationflags=helper_flags,
-                        close_fds=True,
-                    )
-
-                # (d) Destroy webview windows before exit so the main window's
-                #     UserData can be flushed cleanly.
-                try:
-                    import webview as _webview
-                    for w in list(_webview.windows):
-                        try: w.destroy()
-                        except Exception: pass
-                except Exception:
-                    pass
-
-                # (e) Exit self WITHOUT /T — PowerShell must survive to launch
-                #     the installer. Our exit releases the mutex and all file
-                #     handles (including libsndfile). Schedule via Timer so the
-                #     IPC response to `download_and_install_update` returns OK
-                #     first; otherwise the webview sees the bridge tear down
-                #     before the promise resolves.
-                _ulog("self-exit scheduled in 300ms")
-                def _exit():
-                    _ulog("os._exit(0)")
-                    os._exit(0)
-                threading.Timer(0.3, _exit).start()
-            else:
-                # macOS: `open` sends the pkg to Installer.app.
-                subprocess.Popen(["open", str(target)])
-                def _exit_soon():
-                    time.sleep(1.5)
-                    os._exit(0)
-                threading.Thread(target=_exit_soon, daemon=True).start()
-            return {"ok": True, "target": str(target)}
+            return self._update_svc.download_and_install()
         except Exception as e:
             return {"error": _log_error("download_and_install_update", e)}
 
@@ -562,51 +379,21 @@ class GhostAPI:
         Safe to call multiple times — result is cached in-process.
         """
         try:
-            from .updater import check
-            info = check(force=bool(force))
-            if info is None:
-                from .version import __version__
-                return {
-                    "hasUpdate": False,
-                    "current": __version__,
-                    "latest": __version__,
-                    "error": "offline",
-                }
-            return info.to_dict()
+            return self._update_svc.check(force=bool(force))
         except Exception as e:
             return {"error": _log_error("check_for_updates", e)}
 
     def get_settings(self) -> dict:
         """Return current settings (without exposing the full API key)."""
         try:
-            from .config import SUPPORTED_MODELS, get_openai_key, get_openai_model
-            key = get_openai_key()
-            masked = ""
-            if key:
-                if len(key) > 10:
-                    masked = key[:7] + "..." + key[-4:]
-                else:
-                    masked = "***"
-            return {
-                "has_openai_key": bool(key),
-                "masked_key": masked,
-                "openai_model": get_openai_model(),
-                "available_models": SUPPORTED_MODELS,
-            }
+            return self._settings_svc.get_settings()
         except Exception as e:
             return {"error": _log_error("get_settings", e)}
 
     def set_openai_model(self, model_id: str) -> dict:
         """Save user's model choice. Must be in SUPPORTED_MODEL_IDS."""
         try:
-            from .config import SUPPORTED_MODEL_IDS, load_user_config, save_user_config
-            mid = (model_id or "").strip()
-            if mid not in SUPPORTED_MODEL_IDS:
-                return {"error": f"Modelo não suportado: {mid}"}
-            cfg = load_user_config()
-            cfg["openai_model"] = mid
-            save_user_config(cfg)
-            return {"ok": True, "openai_model": mid}
+            return self._settings_svc.set_openai_model(model_id)
         except Exception as e:
             return {"error": _log_error("set_openai_model", e)}
 
@@ -624,108 +411,14 @@ class GhostAPI:
           - error: str (if failed)
         """
         try:
-            key = (key or "").strip()
-            if not key:
-                return {"error": "Chave vazia"}
-            if not key.startswith("sk-"):
-                return {"error": "Formato inválido — deve começar com 'sk-'"}
-
-            # Block overwriting a configured key unless explicit
-            from .config import get_openai_key, load_user_config, save_user_config
-            current = get_openai_key()
-            if current and not replace_existing and current != key:
-                return {
-                    "error": "Já existe uma chave configurada. Remova a atual antes de adicionar outra.",
-                    "replace_required": True,
-                }
-
-            from openai import OpenAI
-            client = OpenAI(api_key=key, timeout=15.0)
-
-            # Test 1: basic access
-            try:
-                models = client.models.list()
-                _ = next(iter(models), None)
-            except Exception as e:
-                err_str = str(e)
-                if "401" in err_str or "Incorrect API key" in err_str:
-                    return {"error": "Chave rejeitada pela OpenAI (401 - inválida)"}
-                return {"error": f"Falha ao validar chave: {err_str[:200]}"}
-
-            # Test 2: chat permission (costs ~$0.0000003)
-            chat_ok = False
-            chat_err = None
-            try:
-                client.chat.completions.create(
-                    model="gpt-4.1-mini",
-                    messages=[{"role": "user", "content": "ok"}],
-                    max_tokens=1,
-                )
-                chat_ok = True
-            except Exception as e:
-                chat_err = str(e)
-
-            if not chat_ok:
-                if chat_err and "insufficient_quota" in chat_err:
-                    return {
-                        "error": "Chave válida mas SEM créditos. Adicione saldo em platform.openai.com/billing",
-                    }
-                if chat_err and ("403" in chat_err or "permission" in chat_err.lower()
-                                  or "insufficient permissions" in chat_err.lower()):
-                    return {
-                        "error": "Chave com RESTRIÇÕES: permissão de chat.completions desabilitada. "
-                                 "Crie uma chave com 'All' permissions ou habilite 'Model capabilities: Write'.",
-                        "permissions": {"models": True, "chat": False, "audio": "unknown"},
-                    }
-                return {"error": f"Chat falhou: {(chat_err or 'erro desconhecido')[:200]}"}
-
-            # Test 3: audio permission — can't pre-test without real audio, but
-            # we can heuristically verify the key's capabilities via /v1/models
-            # (whisper-1 appears in the list if audio is enabled for the key).
-            audio_ok = True
-            try:
-                model_ids = []
-                for m in client.models.list():
-                    mid = getattr(m, "id", "") or ""
-                    model_ids.append(mid)
-                    if len(model_ids) > 200:
-                        break
-                if "whisper-1" not in model_ids:
-                    audio_ok = False
-            except Exception:
-                audio_ok = True  # don't block save on this heuristic
-
-            # Save
-            cfg = load_user_config()
-            cfg["openai_api_key"] = key
-            save_user_config(cfg)
-
-            warnings = []
-            if not audio_ok:
-                warnings.append(
-                    "Permissão de Whisper não detectada — gravação de reuniões pode falhar."
-                )
-
-            return {
-                "ok": True,
-                "permissions": {
-                    "models": True,
-                    "chat": True,
-                    "audio": audio_ok,
-                },
-                "warnings": warnings,
-            }
+            return self._settings_svc.save_openai_key(key, replace_existing=replace_existing)
         except Exception as e:
             return {"error": _log_error("save_openai_key", e)}
 
     def clear_openai_key(self) -> dict:
         """Remove the stored API key."""
         try:
-            from .config import load_user_config, save_user_config
-            cfg = load_user_config()
-            cfg.pop("openai_api_key", None)
-            save_user_config(cfg)
-            return {"ok": True}
+            return self._settings_svc.clear_openai_key()
         except Exception as e:
             return {"error": _log_error("clear_openai_key", e)}
 
@@ -783,7 +476,7 @@ class GhostAPI:
 
     def history_list(self) -> dict:
         try:
-            return {"ok": True, "conversations": _history.list_conversations()}
+            return self._history_svc.list()
         except Exception as e:
             return {"error": _log_error("history_list", e)}
 
@@ -798,20 +491,18 @@ class GhostAPI:
 
     def history_save(self, conv_id: str, messages: list) -> dict:
         try:
-            meta = _history.save_conversation(conv_id, messages)
-            return {"ok": True, "meta": meta}
+            return self._history_svc.save(conv_id, messages)
         except Exception as e:
             return {"error": _log_error("history_save", e)}
 
     def history_delete(self, conv_id: str) -> dict:
         try:
-            ok = _history.delete_conversation(conv_id)
-            return {"ok": ok}
+            return self._history_svc.delete(conv_id)
         except Exception as e:
             return {"error": _log_error("history_delete", e)}
 
     def history_new_id(self) -> dict:
-        return {"ok": True, "id": _history.new_id()}
+        return self._history_svc.new_id()
 
     def update_popup_title(self, title: str) -> dict:
         """Atualiza o header do popup de resposta com o título da conversa."""
@@ -1065,28 +756,98 @@ class GhostAPI:
     # ============ Live Q&A durante reunião ============
 
     def meeting_live_question(self, question: str) -> dict:
-        """Responde uma pergunta usando o transcript live capturado até agora."""
+        """Responde uma pergunta usando a transcrição live + uma captura
+        fresca da tela da reunião. A transcrição cobre o que foi DITO; a
+        captura cobre o que está NA TELA agora (slide, código, gráfico) —
+        perguntas tipo "o que diz nesse slide?" precisam dos dois."""
         try:
             from .config import get_openai_key, get_openai_model
 
             if not self._meeting.is_running():
                 return {"error": "Nenhuma reunião em andamento"}
 
-            segs = list(self._live_transcript or [])
-            if not segs:
-                return {"error": "Ainda não há transcrição disponível. Aguarde alguns segundos."}
+            # Just-in-time: transcribe the untranscribed tail (from the last
+            # chunked checkpoint up to ~1s before "now") so the question has
+            # access to what was said in the last few seconds — not just
+            # whatever the 20-second chunker has already captured.
+            try:
+                import tempfile as _tf
+                from pathlib import Path as _P
+                tail_start = float(self._last_transcribed_sec)
+                tail_end = max(tail_start, self._meeting.elapsed() - 1.0)
+                if tail_end - tail_start >= 3.0:  # only worth it if ≥3s of fresh audio
+                    tail_tmp = _P(_tf.gettempdir()) / f"ghost_tail_{int(time.time() * 1000)}.wav"
+                    p = self._meeting.export_audio_range(tail_start, tail_end, tail_tmp)
+                    if p is not None:
+                        try:
+                            result = transcribe_audio_verbose(p)
+                            for seg in result.get("segments", []):
+                                self._live_transcript.append({
+                                    "start": seg["start"] + tail_start,
+                                    "end": seg["end"] + tail_start,
+                                    "text": seg["text"],
+                                    "_tail": True,  # marker; regular chunker will overwrite on next pass
+                                })
+                            self._last_transcribed_sec = tail_end
+                        finally:
+                            try: tail_tmp.unlink()
+                            except Exception: pass
+            except Exception as _e:
+                print(f"[qa] tail transcribe skipped: {_e}", flush=True)
 
-            # Monta texto do transcript
+            segs = list(self._live_transcript or [])
             transcript_text = "\n".join(
                 f"[{format_time(s.get('start', 0))}] {s.get('text', '')}" for s in segs
-            )
-            prompt = (
-                "Você recebe a transcrição parcial de uma reunião que ainda está em andamento.\n"
-                "Responda a pergunta do usuário baseando-se APENAS no que foi dito até aqui.\n"
-                "Se a resposta não pode ser inferida da transcrição, diga isso.\n\n"
+            ) if segs else "(transcrição ainda não disponível — ainda processando os primeiros segundos)"
+
+            # Grab the current meeting screen so the model sees slides/charts/code,
+            # not just what was spoken aloud. JPEG (not PNG) because we need
+            # this encoded in <1s for responsive Q&A; PNG with optimize=True
+            # on a 1600-wide screenshot can block for 20-30s and make the
+            # typing indicator look frozen.
+            import time as _t
+            t0 = _t.time()
+            img = self._meeting.capture_now()
+            print(f"[qa] capture_now: {_t.time()-t0:.2f}s img={'ok' if img else 'none'}", flush=True)
+
+            image_data_url = None
+            if img is not None:
+                try:
+                    import base64 as _b64
+                    import io as _io
+                    w, h = img.size
+                    max_dim = 1280
+                    if max(w, h) > max_dim:
+                        ratio = max_dim / max(w, h)
+                        img = img.resize((int(w * ratio), int(h * ratio)), Image.LANCZOS)
+                    # JPEG quality 80 = tiny + looks fine for a meeting screenshot
+                    buf = _io.BytesIO()
+                    img.convert("RGB").save(buf, format="JPEG", quality=80)
+                    b64 = _b64.b64encode(buf.getvalue()).decode("utf-8")
+                    image_data_url = f"data:image/jpeg;base64,{b64}"
+                    print(f"[qa] jpeg encode: {_t.time()-t0:.2f}s bytes={len(buf.getvalue())}", flush=True)
+                except Exception as _e:
+                    print(f"[qa] image encode error: {_e}", flush=True)
+                    image_data_url = None
+
+            prompt_text = (
+                "Você recebe a transcrição parcial de uma reunião em andamento "
+                "e uma captura da tela compartilhada neste momento. Use AMBOS "
+                "para responder. A tela pode conter slide, código, planilha "
+                "ou documento — leia-a literalmente quando a pergunta exigir. "
+                "Se a resposta não puder ser inferida nem do áudio nem da tela, diga isso.\n\n"
                 f"TRANSCRIÇÃO ATÉ AGORA:\n{transcript_text}\n\n"
                 f"PERGUNTA DO USUÁRIO: {question}"
             )
+
+            user_content: list[dict] | str
+            if image_data_url:
+                user_content = [
+                    {"type": "text", "text": prompt_text},
+                    {"type": "image_url", "image_url": {"url": image_data_url, "detail": "high"}},
+                ]
+            else:
+                user_content = prompt_text
 
             key = get_openai_key()
             if not key:
@@ -1095,16 +856,19 @@ class GhostAPI:
             from openai import OpenAI
 
             from .gpt_client import completion_kwargs
-            client = OpenAI(api_key=key, timeout=60.0)
+            client = OpenAI(api_key=key, timeout=45.0)
             model = get_openai_model()
+            print(f"[qa] calling openai model={model} with_image={bool(image_data_url)}", flush=True)
+            t1 = _t.time()
             resp = client.chat.completions.create(
                 model=model,
                 messages=[
-                    {"role": "system", "content": "Você é um assistente que ajuda durante reuniões ao vivo."},
-                    {"role": "user", "content": prompt},
+                    {"role": "system", "content": "Você é um assistente que ajuda durante reuniões ao vivo, com acesso à transcrição e à tela compartilhada."},
+                    {"role": "user", "content": user_content},
                 ],
                 **completion_kwargs(model, max_tokens=1500),
             )
+            print(f"[qa] openai returned in {_t.time()-t1:.2f}s", flush=True)
             return {"ok": True, "text": resp.choices[0].message.content or ""}
         except Exception as e:
             return {"error": _log_error("meeting_live_question", e)}
@@ -1410,21 +1174,30 @@ class GhostAPI:
         "meeting in progress", "in-call",
     )
 
+    def _monitor_index_for_rect(self, left: int, top: int, width: int, height: int) -> int | None:
+        """Pick the monitor that contains the window's center point. Returns
+        None if no monitor matches (very-off-screen window)."""
+        cx = left + width // 2
+        cy = top + height // 2
+        for m in self._monitors:
+            if (m["left"] <= cx < m["left"] + m["width"] and
+                    m["top"] <= cy < m["top"] + m["height"]):
+                return m["index"]
+        return None
+
     def list_meeting_windows(self) -> list[dict]:
-        """Same as list_windows but filtered to windows that look like they
-        belong to a meeting app or a browser tab focused on a meeting
-        platform (Google Meet, Teams, Zoom, Webex, Jitsi, etc.).
+        """Enumerate visible top-level windows eligible as a meeting capture
+        target, annotated with the monitor they live on and whether they
+        look like a meeting app/page.
 
-        Done server-side because the process-image check needs OpenProcess
-        + QueryFullProcessImageName, which is awkward from JavaScript. A
-        window passes the filter if EITHER:
-          (a) its owning process image matches _MEETING_APP_PROCESSES, OR
-          (b) its title contains one of _MEETING_TITLE_PATTERNS.
-
-        Returns the same shape as list_windows (hwnd/title/width/height)."""
+        The UI groups these under the monitor the user picks, so we return
+        ALL reasonably-sized visible windows (not just meeting-matching
+        ones): the user's pre-join browser tab, a Chrome window that
+        doesn't yet show "Meet - ...", or any other window they want to
+        capture should appear. The `is_meeting` flag lets the frontend
+        surface detected meetings first without hiding the rest."""
         try:
             import ctypes
-            import win32api
             import win32gui
             import win32process
         except Exception:
@@ -1476,7 +1249,8 @@ class GhostAPI:
                 if not title or len(title) < 2:
                     return True
                 rect = win32gui.GetWindowRect(hwnd)
-                w, h_ = rect[2] - rect[0], rect[3] - rect[1]
+                left, top = rect[0], rect[1]
+                w, h_ = rect[2] - left, rect[3] - top
                 if w < 100 or h_ < 100:
                     return True
                 _, pid = win32process.GetWindowThreadProcessId(hwnd)
@@ -1489,22 +1263,25 @@ class GhostAPI:
                     image in self._MEETING_APP_PROCESSES
                     or any(pat in title_l for pat in patterns_lower)
                 )
-                if not is_meeting:
-                    return True
 
                 windows.append({
                     "hwnd": hwnd,
                     "title": title,
+                    "left": left,
+                    "top": top,
                     "width": w,
                     "height": h_,
                     "process": image,
+                    "is_meeting": is_meeting,
+                    "monitor": self._monitor_index_for_rect(left, top, w, h_),
                 })
             except Exception:
                 pass
             return True
 
         win32gui.EnumWindows(callback, None)
-        windows.sort(key=lambda x: x["title"].lower())
+        # Meetings first (so the obvious choice is up top), then the rest by title.
+        windows.sort(key=lambda x: (0 if x["is_meeting"] else 1, x["title"].lower()))
         return windows
 
     def clear_history(self):
@@ -1634,15 +1411,34 @@ class GhostAPI:
 
             monitor = None
             window_hwnd = 0
+            title_patterns: list[str] = []
 
             if target_kind == "window" and target_id:
                 window_hwnd = int(target_id)
+                # If the chosen window is a browser running a meeting page,
+                # pin the capture to frames whose title still looks like a
+                # meeting. Prevents tab-switching from sneaking a different
+                # tab's content into the recording.
+                try:
+                    import win32gui
+                    initial_title = win32gui.GetWindowText(window_hwnd).lower()
+                    matched = [p.lower() for p in self._MEETING_TITLE_PATTERNS
+                               if p.lower() in initial_title]
+                    if matched:
+                        title_patterns = matched
+                        print(f"[meeting] tab-lock patterns: {matched}", flush=True)
+                except Exception:
+                    pass
             elif target_kind == "monitor" and target_id is not None:
                 monitor = next((m for m in self._monitors if m["index"] == target_id), None)
             else:
                 monitor = self._current_monitor() or (self._monitors[0] if self._monitors else None)
 
-            self._meeting.start(monitor=monitor, window_hwnd=window_hwnd)
+            self._meeting.start(
+                monitor=monitor,
+                window_hwnd=window_hwnd,
+                window_title_patterns=title_patterns,
+            )
             self._meeting_started_at = datetime.now()
             self._meeting_last_status = "Gravando..."
 
@@ -1678,11 +1474,14 @@ class GhostAPI:
         self._meeting_last_status = text
 
     def _live_transcribe_loop(self):
-        """Transcribe ~60s chunks of the running meeting for live Q&A."""
+        """Transcribe short chunks of the running meeting for live Q&A.
+        Shorter chunks (≈20s) keep the transcript close to real-time so the
+        assistant can answer questions about things said moments ago without
+        waiting a full minute."""
         import tempfile
         from pathlib import Path as _P
-        CHUNK = 60.0
-        SAFETY = 3.0
+        CHUNK = 20.0
+        SAFETY = 2.0
         while self._meeting.is_running():
             try:
                 elapsed = self._meeting.elapsed()
