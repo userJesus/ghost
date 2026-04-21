@@ -1,0 +1,44 @@
+<!-- ===================================================
+     Sensitive-info warning modal
+     Loaded dynamically into #modals-root by app.js init().
+     Alpine bindings are activated via Alpine.initTree().
+     ===================================================
+-->
+<!-- Sensitive info warning modal -->
+<div class="modal-backdrop" x-show="sensitiveWarning" x-transition
+     @click.self="dismissSensitiveWarning('cancel')"
+     @keydown.escape.window="dismissSensitiveWarning('cancel')" x-cloak>
+    <div class="modal sensitive-modal">
+        <div class="modal-header">
+            <h2>⚠ Detectamos dados sensíveis</h2>
+            <button class="btn-icon" @click="dismissSensitiveWarning('cancel')">
+                <svg viewBox="0 0 14 14" fill="none"><path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+            </button>
+        </div>
+        <div class="modal-body">
+            <p class="sensitive-intro">
+                Antes de enviar pra OpenAI, identifiquei os seguintes padrões que parecem dados pessoais:
+            </p>
+            <div class="sensitive-list">
+                <template x-for="s in (sensitiveWarning?.types || [])" :key="s.type">
+                    <div class="sensitive-item">
+                        <span class="sensitive-type" x-text="s.type"></span>
+                        <span class="sensitive-count" x-text="s.count + (s.count > 1 ? ' ocorrências' : ' ocorrência')"></span>
+                        <code class="sensitive-sample" x-text="s.sample"></code>
+                    </div>
+                </template>
+            </div>
+            <p class="sensitive-hint">
+                O texto será enviado via API da OpenAI. Se for informação de terceiros ou sigilosa,
+                considere remover antes de prosseguir.
+            </p>
+        </div>
+        <div class="modal-footer">
+            <button class="modal-btn-secondary" @click="dismissSensitiveWarning('cancel')">Cancelar</button>
+            <button class="modal-btn-primary" @click="dismissSensitiveWarning('send')"
+                    style="background: linear-gradient(135deg, #ffb77e, #c48744);">
+                Enviar mesmo assim
+            </button>
+        </div>
+    </div>
+</div>

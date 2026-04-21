@@ -1,0 +1,108 @@
+<!-- ===================================================
+     Meeting target picker modal
+     Loaded dynamically into #modals-root by app.js init().
+     Alpine bindings are activated via Alpine.initTree().
+     ===================================================
+-->
+<!-- Meeting target picker modal -->
+<div class="modal-backdrop" x-show="meetingModalOpen" x-transition @click.self="meetingModalOpen = false">
+    <div class="modal">
+        <div class="modal-header">
+            <h2>🎙 Iniciar reunião <span class="beta-badge" title="Recurso em beta — feedback bem-vindo">BETA</span></h2>
+            <button class="btn-icon" @click="meetingModalOpen = false">
+                <svg viewBox="0 0 14 14" fill="none"><path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+            </button>
+        </div>
+
+        <div class="modal-body">
+            <!-- INSTRUÇÃO CRÍTICA — sem isso a gravação pega a tela errada -->
+            <div class="meeting-warning">
+                <div class="meeting-warning-icon">⚠️</div>
+                <div class="meeting-warning-body">
+                    <strong>Antes de iniciar — selecione o app ou a aba da reunião:</strong>
+                    <ul class="meeting-warning-list">
+                        <li>
+                            <strong>App desktop</strong> (Zoom, Teams, Meet desktop) — escolha a janela
+                            dele na lista abaixo. Só o conteúdo dessa janela é gravado, mesmo que outras apps
+                            fiquem em cima.
+                        </li>
+                        <li>
+                            <strong>Aba de navegador</strong> (Meet no Chrome/Edge, Teams Web) —
+                            <strong style="color: var(--accent);">abra a reunião em uma janela separada</strong>
+                            do navegador (arrasta a aba pra fora pra virar janela independente, ou
+                            <kbd>Ctrl</kbd>+<kbd>N</kbd> e cole o link) e use as outras abas em outra janela.
+                            Senão a gravação vai seguir o conteúdo da aba atual e pegar tudo o que você estiver
+                            fazendo.
+                        </li>
+                        <li>
+                            <strong>Monitor inteiro</strong> — só escolha se o PC tem tela dedicada
+                            pra reunião. Vai gravar tudo que aparece naquele monitor.
+                        </li>
+                    </ul>
+                </div>
+            </div>
+
+            <p class="modal-hint">
+                <strong>Áudio</strong> grava todo som do sistema + microfone.
+                Silencie Spotify, notificações e outros apps antes de iniciar.
+            </p>
+
+            <div class="modal-section-label">O que gravar visualmente</div>
+
+            <div class="target-group">
+                <div class="target-group-title">Monitores</div>
+                <template x-for="m in monitors" :key="'mon-' + m.index">
+                    <label class="target-option"
+                           :class="{ 'target-option-active': meetingFilterMonitor === m.index }">
+                        <input type="radio" name="mtarget"
+                               :value="'monitor:' + m.index"
+                               :checked="meetingTarget === 'monitor:' + m.index"
+                               @change="selectMeetingMonitor(m.index)">
+                        <span class="target-icon">🖥</span>
+                        <span class="target-text">
+                            <strong x-text="'Monitor ' + m.index"></strong>
+                            <span class="target-meta" x-text="m.width + '×' + m.height"></span>
+                        </span>
+                    </label>
+                </template>
+            </div>
+
+            <div class="target-group">
+                <div class="target-group-title">
+                    Janelas no monitor selecionado
+                </div>
+                <div class="target-scroll" x-show="windowsForSelectedMonitor().length > 0">
+                    <template x-for="w in windowsForSelectedMonitor()" :key="'win-' + w.hwnd">
+                        <label class="target-option">
+                            <input type="radio" name="mtarget"
+                                   :value="'window:' + w.hwnd"
+                                   x-model="meetingTarget">
+                            <span class="target-icon" x-text="w.is_meeting ? '🎙' : '🪟'"></span>
+                            <span class="target-text">
+                                <strong x-text="w.title"></strong>
+                                <span class="target-meta">
+                                    <span x-text="w.width + '×' + w.height"></span>
+                                    <span x-show="w.is_meeting" style="color: var(--accent); margin-left: 6px;">· reunião detectada</span>
+                                </span>
+                            </span>
+                        </label>
+                    </template>
+                </div>
+                <p class="modal-hint" x-show="windowsForSelectedMonitor().length === 0"
+                   style="font-size:12px;opacity:0.75;margin:6px 2px 0;">
+                    Nenhuma janela aberta neste monitor. Selecione outro monitor acima
+                    ou deixe como "Monitor <span x-text="meetingFilterMonitor"></span>"
+                    para capturar a tela inteira.
+                </p>
+            </div>
+        </div>
+
+        <div class="modal-footer">
+            <button class="modal-btn-secondary" @click="meetingModalOpen = false">Cancelar</button>
+            <button class="modal-btn-primary" @click="confirmMeetingStart()">
+                <span class="meeting-dot" style="background:#fff; box-shadow: 0 0 8px rgba(255,255,255,0.6);"></span>
+                Iniciar gravação
+            </button>
+        </div>
+    </div>
+</div>

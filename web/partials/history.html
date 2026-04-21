@@ -1,0 +1,51 @@
+<!-- ===================================================
+     History modal
+     Loaded dynamically into #modals-root by app.js init().
+     Alpine bindings are activated via Alpine.initTree().
+     ===================================================
+-->
+<!-- Histórico de conversas -->
+<div class="modal-backdrop" x-show="historyModalOpen" x-transition
+     @click.self="historyModalOpen = false"
+     @keydown.escape.window="historyModalOpen = false" x-cloak>
+    <div class="modal history-modal">
+        <div class="modal-header">
+            <h2>Histórico de conversas</h2>
+            <button class="btn-icon" @click="historyModalOpen = false">
+                <svg viewBox="0 0 14 14" fill="none"><path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+            </button>
+        </div>
+        <div class="modal-body">
+            <template x-if="!historyList.length">
+                <div class="history-empty">
+                    <div class="history-empty-icon">💬</div>
+                    <div>Nenhuma conversa salva ainda</div>
+                    <div class="history-empty-hint">Suas conversas aparecerão aqui automaticamente</div>
+                </div>
+            </template>
+            <template x-if="historyList.length">
+                <div class="history-list">
+                    <template x-for="c in historyList" :key="c.id">
+                        <div class="history-item"
+                             :class="{ active: currentConvId === c.id }"
+                             @click="switchToConversation(c.id)">
+                            <div class="history-item-body">
+                                <div class="history-item-title" x-text="c.title"></div>
+                                <div class="history-item-meta">
+                                    <span x-text="c.message_count + ' msgs'"></span>
+                                    <span class="history-dot">·</span>
+                                    <span x-text="c.updated_at.replace('T', ' ').slice(0, 16)"></span>
+                                </div>
+                            </div>
+                            <button class="history-item-delete"
+                                    @click="deleteConversation(c.id, $event)"
+                                    data-tooltip="Apagar conversa">
+                                <svg viewBox="0 0 14 14" fill="none"><path d="M3 4.5h8M5.5 4.5V3.2a1 1 0 011-1h1a1 1 0 011 1v1.3M4 4.5l.6 7.3a1 1 0 001 .9h2.8a1 1 0 001-.9l.6-7.3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                            </button>
+                        </div>
+                    </template>
+                </div>
+            </template>
+        </div>
+    </div>
+</div>

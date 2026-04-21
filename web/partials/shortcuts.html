@@ -1,0 +1,117 @@
+<!-- ===================================================
+     Shortcuts modal
+     Loaded dynamically into #modals-root by app.js init().
+     Alpine bindings are activated via Alpine.initTree().
+     ===================================================
+-->
+<!-- Shortcuts modal (keyboard reference) -->
+<div class="modal-backdrop" x-show="shortcutsModalOpen" x-transition
+     @click.self="shortcutsModalOpen = false"
+     @keydown.escape.window="shortcutsModalOpen = false" x-cloak>
+    <div class="modal shortcuts-modal">
+        <div class="modal-header">
+            <h2>
+                <svg viewBox="0 0 16 16" fill="none" style="width:16px;height:16px;display:inline;vertical-align:-3px;margin-right:6px;">
+                    <rect x="1.5" y="4" width="13" height="8" rx="1.5" stroke="currentColor" stroke-width="1.2"/>
+                    <path d="M4 7h0.1M6 7h0.1M8 7h0.1M10 7h0.1M12 7h0.1M4 9h0.1M5.5 10.5h5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+                </svg>
+                Atalhos
+            </h2>
+            <button class="btn-icon" @click="shortcutsModalOpen = false">
+                <svg viewBox="0 0 14 14" fill="none"><path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+            </button>
+        </div>
+
+        <div class="modal-body">
+            <!-- Grupo: Global (funciona fora do Ghost) -->
+            <div class="shortcut-group">
+                <div class="shortcut-group-title">
+                    <span class="shortcut-group-icon">🌐</span>
+                    Global <span class="shortcut-group-hint">(funciona em qualquer app)</span>
+                </div>
+                <div class="shortcut-row">
+                    <div class="shortcut-keys">
+                        <kbd>Ctrl</kbd><span class="kbd-plus">+</span>
+                        <kbd>Shift</kbd><span class="kbd-plus">+</span>
+                        <kbd>G</kbd>
+                    </div>
+                    <div class="shortcut-desc">Mostrar / ocultar o Ghost</div>
+                </div>
+            </div>
+
+            <!-- Grupo: No chat -->
+            <div class="shortcut-group">
+                <div class="shortcut-group-title">
+                    <span class="shortcut-group-icon">💬</span>
+                    No chat
+                </div>
+                <div class="shortcut-row">
+                    <div class="shortcut-keys">
+                        <kbd>Enter</kbd>
+                    </div>
+                    <div class="shortcut-desc">Enviar pergunta</div>
+                </div>
+                <div class="shortcut-row">
+                    <div class="shortcut-keys">
+                        <kbd>Ctrl</kbd><span class="kbd-plus">+</span>
+                        <kbd>C</kbd>
+                    </div>
+                    <div class="shortcut-desc">Copiar trecho selecionado (após ativar "Selecionar trecho")</div>
+                </div>
+            </div>
+
+            <!-- Grupo: Captura de teclado -->
+            <div class="shortcut-group">
+                <div class="shortcut-group-title">
+                    <span class="shortcut-group-icon">⌨</span>
+                    Captura de teclado ativa
+                    <span class="shortcut-group-hint">(clique no ícone ⌨ no composer)</span>
+                </div>
+                <div class="shortcut-row">
+                    <div class="shortcut-keys">
+                        <kbd class="kbd-wide">A–Z</kbd>
+                        <span class="kbd-sep">·</span>
+                        <kbd class="kbd-wide">0–9</kbd>
+                    </div>
+                    <div class="shortcut-desc">Digita no campo sem o Ghost roubar foco</div>
+                </div>
+                <div class="shortcut-row">
+                    <div class="shortcut-keys"><kbd>Enter</kbd></div>
+                    <div class="shortcut-desc">Envia imediatamente</div>
+                </div>
+                <div class="shortcut-row">
+                    <div class="shortcut-keys"><kbd>Esc</kbd></div>
+                    <div class="shortcut-desc">Desativa captura global</div>
+                </div>
+                <div class="shortcut-row">
+                    <div class="shortcut-keys"><kbd>Backspace</kbd></div>
+                    <div class="shortcut-desc">Apaga último caractere do campo</div>
+                </div>
+            </div>
+
+            <!-- Grupo: Captura de tela automática -->
+            <div class="shortcut-group">
+                <div class="shortcut-group-title">
+                    <span class="shortcut-group-icon">📷</span>
+                    Durante captura de área
+                </div>
+                <div class="shortcut-row">
+                    <div class="shortcut-keys"><kbd>Esc</kbd></div>
+                    <div class="shortcut-desc">Cancela a seleção de área</div>
+                </div>
+                <div class="shortcut-row">
+                    <div class="shortcut-keys">
+                        <kbd class="kbd-wide">Click + Drag</kbd>
+                    </div>
+                    <div class="shortcut-desc">Define a região a capturar</div>
+                </div>
+            </div>
+
+            <p class="shortcuts-footnote">
+                💡 Dica: o Ghost nunca rouba foco. Você pode digitar em qualquer app e,
+                com a captura de teclado ativa (<kbd class="kbd-inline">⌨</kbd>), as teclas
+                vão pro campo do Ghost automaticamente.
+            </p>
+        </div>
+    </div>
+</div>

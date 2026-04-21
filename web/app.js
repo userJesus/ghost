@@ -206,6 +206,12 @@ function ghostApp() {
                 marked.setOptions({ breaks: true, gfm: true });
                 this.setStatus('Carregando...');
 
+                // Pull the 7 modal partials from web/partials/ and activate
+                // Alpine bindings on the injected subtree. Runs BEFORE any
+                // code path that could open a modal (settings, history,
+                // meeting, clone, etc.) so the markup is always ready.
+                await this._loadModalPartials();
+
                 // Route every in-page link click to the OS default browser
                 // instead of letting the webview navigate its own content to
                 // the URL (which replaced the whole Ghost UI with the
@@ -1219,6 +1225,73 @@ function ghostApp() {
                 }, 50);
                 setTimeout(() => { clearInterval(timer); resolve(); }, 5000);
             });
+        },
+
+        /* ──────────────────────────────────────────────────────────────
+         * Modal partials loader
+         *
+         * index.html is intentionally slim: each modal lives in its own
+         * file under web/partials/. This method fetches them in parallel,
+         * concatenates into #modals-root, then asks Alpine to activate
+         * bindings on the injected subtree.
+         *
+         * Why Alpine.initTree(root):
+         *   Alpine scans the DOM ONCE at boot. Nodes injected later stay
+         *   inert unless we explicitly ask Alpine to initialize them.
+         *   initTree(root) walks root + descendants, registering x-show,
+         *   x-model, @click, etc. The closest x-data ancestor of #modals-root
+         *   is <body x-data="ghostApp()">, so every binding resolves to
+         *   this same component — state flows naturally, no new scope.
+         *
+         * Failure mode: if a fetch fails (rare for local file:// bundled
+         * assets), that modal won't exist and the button opening it will
+         * do nothing. We log a warning so it's diagnosable from DevTools.
+         * ────────────────────────────────────────────────────────────── */
+        async _loadModalPartials() {
+            const root = document.getElementById('modals-root');
+            if (!root) {
+                console.warn('[modals] #modals-root not found in index.html');
+                return;
+            }
+            if (root.dataset.ghostModals === 'loaded') return;  // idempotent
+
+            const files = [
+                'partials/settings.html',
+                'partials/shortcuts.html',
+                'partials/history.html',
+                'partials/sensitive.html',
+                'partials/close-confirm.html',
+                'partials/meeting.html',
+                'partials/clone.html',
+            ];
+
+            const fetchOne = async (path) => {
+                try {
+                    const r = await fetch(path, { cache: 'no-store' });
+                    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+                    return await r.text();
+                } catch (e) {
+                    console.warn('[modals] failed to load', path, e);
+                    return `<!-- partial ${path} failed to load: ${e} -->`;
+                }
+            };
+
+            const htmlParts = await Promise.all(files.map(fetchOne));
+            root.innerHTML = htmlParts.join('\n\n');
+            root.dataset.ghostModals = 'loaded';
+
+            // Activate Alpine bindings on the injected subtree. Without this,
+            // x-show / @click / x-model inside the partials stay inert and
+            // nothing responds to user input.
+            if (window.Alpine?.initTree) {
+                try {
+                    window.Alpine.initTree(root);
+                } catch (e) {
+                    console.error('[modals] Alpine.initTree failed:', e);
+                }
+            } else {
+                console.warn('[modals] window.Alpine.initTree unavailable — modals will be inert');
+            }
         },
 
         // --- Window controls ---

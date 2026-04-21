@@ -1,0 +1,213 @@
+<!-- ===================================================
+     Settings modal
+     Loaded dynamically into #modals-root by app.js init().
+     Alpine bindings are activated via Alpine.initTree().
+     ===================================================
+-->
+<!-- Settings modal (API key) -->
+<div class="modal-backdrop" x-show="settingsModalOpen" x-transition
+     @click.self="settingsModalOpen = false">
+    <div class="modal">
+        <div class="modal-header">
+            <h2>⚙ Configurações</h2>
+            <button class="btn-icon" @click="settingsModalOpen = false">
+                <svg viewBox="0 0 14 14" fill="none"><path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+            </button>
+        </div>
+        <div class="modal-body">
+            <div class="settings-section">
+                <label class="settings-label">OpenAI API Key</label>
+                <p class="settings-hint">
+                    Gere sua chave gratuitamente em
+                    <a href="#" @click.prevent="openUrl('https://platform.openai.com/api-keys')">platform.openai.com/api-keys</a>.
+                    Você paga por token apenas pelo que usar (~$0.0001 por pergunta).
+                </p>
+                <div class="settings-current" x-show="settings.has_openai_key">
+                    <span>Chave configurada:</span>
+                    <code x-text="settings.masked_key"></code>
+                    <button class="clear-btn" @click="clearKey()" data-tooltip="Remover chave">Remover</button>
+                </div>
+
+                <template x-if="!settings.has_openai_key">
+                    <div>
+                        <div class="settings-input-row">
+                            <input type="password"
+                                   x-model="openaiKeyInput"
+                                   placeholder="Clique em 'Colar' após copiar a chave"
+                                   :disabled="savingKey"
+                                   readonly
+                                   class="settings-input">
+                            <button class="settings-paste-btn" @click="pasteKey()" :disabled="savingKey">
+                                📋 Colar
+                            </button>
+                            <button class="settings-save-btn"
+                                    @click="saveKey()"
+                                    :disabled="savingKey || !openaiKeyInput.trim()"
+                                    x-text="savingKey ? 'Validando...' : 'Salvar'"></button>
+                        </div>
+                        <p class="settings-sub-hint">
+                            Como o Ghost não rouba foco de outros apps, não dá pra digitar direto.
+                            Copie a chave no navegador (Ctrl+C) e clique em <strong>Colar</strong>.
+                        </p>
+                    </div>
+                </template>
+
+                <p class="settings-sub-hint" x-show="settings.has_openai_key">
+                    Para trocar a chave, clique em <strong>Remover</strong> acima primeiro.
+                </p>
+                <div class="settings-error" x-show="settingsError" x-text="settingsError"></div>
+                <div class="settings-success" x-show="settingsSuccess" x-text="settingsSuccess"></div>
+
+                <div class="settings-perms" x-show="keyPermissions">
+                    <div class="settings-perms-title">Permissões verificadas</div>
+                    <div class="perm-row" :class="{ ok: keyPermissions?.models }">
+                        <span x-text="keyPermissions?.models ? '✓' : '✗'"></span>
+                        <span>Leitura de modelos</span>
+                    </div>
+                    <div class="perm-row" :class="{ ok: keyPermissions?.chat }">
+                        <span x-text="keyPermissions?.chat ? '✓' : '✗'"></span>
+                        <span>Chat Completions (análise de tela, perguntas)</span>
+                    </div>
+                    <div class="perm-row" :class="{ ok: keyPermissions?.audio === true, warn: keyPermissions?.audio === false }">
+                        <span x-text="keyPermissions?.audio === true ? '✓' : (keyPermissions?.audio === false ? '⚠' : '?')"></span>
+                        <span>Whisper / Audio (transcrição de reuniões)</span>
+                    </div>
+                </div>
+                <template x-for="w in keyWarnings" :key="w">
+                    <div class="settings-warning" x-text="w"></div>
+                </template>
+            </div>
+
+            <!-- Model picker -->
+            <div class="settings-section" style="margin-top:20px;"
+                 x-show="settings.has_openai_key && modelsByTier.length">
+                <label class="settings-label">Modelo da OpenAI</label>
+                <p class="settings-hint">
+                    Todos aceitam <strong>imagem</strong> e respondem bem.
+                    Custo é estimado pra uma pergunta média com screenshot.
+                </p>
+
+                <!-- Seletor de moeda + cotação ao vivo -->
+                <div class="currency-block">
+                    <div class="currency-picker-row">
+                        <span class="currency-row-icon">
+                            <svg viewBox="0 0 16 16" fill="none">
+                                <circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-width="1.3"/>
+                                <path d="M10 6c-.5-1-1.3-1.3-2.2-1.3-1.3 0-2.3.8-2.3 2 0 2 4.5 1.4 4.5 3.5 0 1.2-1 2-2.3 2-.9 0-1.8-.3-2.3-1.3M8 3.3v9.4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+                            </svg>
+                        </span>
+                        <span class="currency-label">Moeda</span>
+
+                        <div class="chip chip-currency"
+                             :class="{ open: currencyOpen }"
+                             @click.away="currencyOpen = false">
+                            <button class="chip-trigger" type="button"
+                                    @click="currencyOpen = !currencyOpen">
+                                <span class="currency-flag"
+                                      x-text="currencySymbol"></span>
+                                <span class="chip-value"
+                                      x-text="(_currencySupport.find(c => c.code === currency) || {}).label"></span>
+                                <svg class="chip-caret" viewBox="0 0 10 6" fill="none">
+                                    <path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+                                </svg>
+                            </button>
+                            <div class="chip-flyout" x-show="currencyOpen" x-transition.opacity.duration.120ms x-cloak>
+                                <div class="chip-flyout-label">Moeda de exibição</div>
+                                <template x-for="c in _currencySupport" :key="c.code">
+                                    <button class="chip-option"
+                                            :class="{ selected: currency === c.code }"
+                                            @click="setCurrency(c.code)"
+                                            type="button">
+                                        <span class="chip-option-check">
+                                            <svg x-show="currency === c.code" viewBox="0 0 12 12" fill="none"><path d="M2.5 6.5l2.5 2.5 4.5-5.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                                        </span>
+                                        <span class="chip-option-icon" x-text="c.symbol"></span>
+                                        <span class="chip-option-label" x-text="c.label"></span>
+                                    </button>
+                                </template>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Cotação (só aparece se não for USD) -->
+                    <div class="rate-display" x-show="currency !== 'USD'" x-cloak>
+                        <span class="rate-loading" x-show="exchangeLoading">atualizando cotação...</span>
+                        <template x-if="!exchangeLoading">
+                            <div class="rate-badge-row">
+                                <div class="rate-badge">
+                                    <span class="rate-from">1 USD</span>
+                                    <span class="rate-arrow">→</span>
+                                    <span class="rate-to" x-text="exchangeRateShort"></span>
+                                </div>
+                                <span class="rate-meta" x-show="exchangeRateDate">
+                                    cotação de <span x-text="exchangeRateDateBR"></span> · fonte ECB
+                                </span>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+
+                <template x-for="group in modelsByTier" :key="group.tier">
+                    <div class="model-group">
+                        <div class="model-group-header">
+                            <span class="model-group-icon" x-text="group.icon"></span>
+                            <span class="model-group-label" x-text="group.label"></span>
+                        </div>
+                        <template x-for="m in group.models" :key="m.id">
+                            <label class="model-card"
+                                   :class="{ selected: settings.openai_model === m.id }">
+                                <input type="radio" name="openai-model"
+                                       :value="m.id"
+                                       :checked="settings.openai_model === m.id"
+                                       @change="selectModel(m.id)">
+
+                                <div class="model-card-check">
+                                    <svg x-show="settings.openai_model === m.id" viewBox="0 0 14 14" fill="none">
+                                        <path d="M3 7.5l3 3 5-6.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                    </svg>
+                                </div>
+
+                                <div class="model-card-body">
+                                    <div class="model-card-head">
+                                        <span class="model-card-name" x-text="m.name"></span>
+                                        <template x-if="m.recommended">
+                                            <span class="model-badge badge-recommended">⭐ Recomendado</span>
+                                        </template>
+                                        <template x-if="settings.openai_model === m.id">
+                                            <span class="model-badge badge-active">✓ em uso</span>
+                                        </template>
+                                    </div>
+
+                                    <div class="model-card-desc" x-text="m.description"></div>
+
+                                    <div class="model-card-cost">
+                                        <span class="cost-amount" x-text="formatUsd(m.cost_per_100)"></span>
+                                        <span class="cost-converted"
+                                              x-show="currency !== 'USD'"
+                                              x-text="'≈ ' + formatConverted(m.cost_per_100)"></span>
+                                        <span class="cost-unit">a cada 100 perguntas</span>
+                                    </div>
+                                </div>
+                            </label>
+                        </template>
+                    </div>
+                </template>
+
+                <div class="settings-success" x-show="modelSaveMsg" x-text="modelSaveMsg" style="margin-top:6px;"></div>
+
+                <div class="pricing-footer">
+                    <svg viewBox="0 0 14 14" fill="none" class="pricing-footer-icon">
+                        <circle cx="7" cy="7" r="5.5" stroke="currentColor" stroke-width="1.2"/>
+                        <path d="M7 4v3.5M7 9.5v.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+                    </svg>
+                    <span>
+                        Preços podem ter mudado desde a última atualização.
+                        <a href="#" @click.prevent="openUrl('https://platform.openai.com/docs/pricing')">
+                            Ver tabela oficial na OpenAI →
+                        </a>
+                    </span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

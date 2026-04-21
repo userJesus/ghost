@@ -1,0 +1,61 @@
+<!-- ===================================================
+     Close confirmation modal
+     Loaded dynamically into #modals-root by app.js init().
+     Alpine bindings are activated via Alpine.initTree().
+     ===================================================
+-->
+<!-- Close confirmation modal -->
+<div class="modal-backdrop" x-show="closeConfirmOpen" x-transition
+     @click.self="closeConfirmOpen = false"
+     @keydown.escape.window="closeConfirmOpen = false" x-cloak>
+    <div class="modal close-confirm-modal">
+        <div class="modal-header">
+            <h2>Fechar o Ghost?</h2>
+            <button class="btn-icon" @click="closeConfirmOpen = false">
+                <svg viewBox="0 0 14 14" fill="none"><path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+            </button>
+        </div>
+        <div class="modal-body">
+            <p class="close-confirm-intro">
+                O que você quer fazer?
+            </p>
+
+            <div class="close-option-list">
+                <button class="close-option close-option-hide" @click="confirmClose('hide')">
+                    <div class="close-option-icon">
+                        <svg viewBox="0 0 20 20" fill="none">
+                            <path d="M2 10s2.5-6 8-6 8 6 8 6-2.5 6-8 6-8-6-8-6z" stroke="currentColor" stroke-width="1.4"/>
+                            <path d="M3 3l14 14" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+                        </svg>
+                    </div>
+                    <div class="close-option-body">
+                        <div class="close-option-title">Apenas ocultar</div>
+                        <div class="close-option-desc">
+                            Fica rodando em segundo plano. Pressione
+                            <kbd class="kbd-inline">Ctrl</kbd> +
+                            <kbd class="kbd-inline">Shift</kbd> +
+                            <kbd class="kbd-inline">G</kbd>
+                            pra trazer de volta quando precisar.
+                        </div>
+                    </div>
+                </button>
+
+                <button class="close-option close-option-exit" @click="confirmClose('exit')">
+                    <div class="close-option-icon close-option-icon-danger">
+                        <svg viewBox="0 0 20 20" fill="none">
+                            <path d="M7.5 2.5h-3a2 2 0 00-2 2v11a2 2 0 002 2h3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+                            <path d="M14 6l4 4-4 4M18 10H8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </div>
+                    <div class="close-option-body">
+                        <div class="close-option-title">Encerrar aplicação</div>
+                        <div class="close-option-desc">
+                            Fecha de vez — todos os processos do Ghost serão finalizados.
+                            Vai precisar abrir o app pelo ícone pra usar de novo.
+                        </div>
+                    </div>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
