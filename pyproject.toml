@@ -121,7 +121,14 @@ ignore = ["E501"]
 # These files were moved into the new package structure via `cp`, so the
 # same rules that allowed them before still apply. Refactoring their
 # content is out of scope for the 2026-04 architecture pass.
+# The old web_cloner.py was split into 7 files (web_cloner + 6 private _*.py).
+# The pre-split patterns (semicolon statements, Win32 constants, SIM shortcuts)
+# migrated verbatim into the sub-files — same tolerance applies.
 "src/cloner/web_cloner.py" = ["E701", "E702", "N806", "SIM103", "SIM105"]
+"src/cloner/_context.py" = ["E701", "E702", "N806", "SIM103", "SIM105"]
+"src/cloner/_processors.py" = ["E701", "E702", "N806", "SIM103", "SIM105"]
+"src/cloner/_render_webview.py" = ["E701", "E702", "N806", "SIM103", "SIM105"]
+"src/cloner/_render_playwright.py" = ["E701", "E702", "N806", "SIM103", "SIM105"]
 "src/capture_pkg/scroll.py" = ["B905"]
 "src/recording/meeting_recorder.py" = ["N806"]
 
