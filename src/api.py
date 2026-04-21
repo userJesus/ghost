@@ -1369,23 +1369,45 @@ class GhostAPI:
 
     # Substrings matched in the window title (case-insensitive). Covers both
     # native apps that prefix their titles and browser tabs pinned to
-    # meeting-platform URLs. Keep this list focused on *meeting* contexts —
-    # generic "chrome.exe" isn't enough; we check the tab title.
+    # meeting-platform URLs. Generic browser process names aren't enough —
+    # we match on the TAB title (which the browser puts in the window title).
+    # For Google Meet specifically, Chrome shows "Meet - abc-defg-hij -
+    # Google Chrome", so "meet - " is the reliable anchor (domain rarely
+    # appears in window titles, only in the URL bar).
     _MEETING_TITLE_PATTERNS = (
-        "meet.google.com", "google meet",
+        # Google Meet — tab title is "Meet - <room-id> - <Browser>"
+        "meet.google.com", "google meet", "meet - ", "meet – ",
+        # Microsoft Teams — native app and web app
         "teams.microsoft.com", "microsoft teams", "teams meeting",
-        "zoom.us", "zoom meeting", "zoom.com",
-        "webex.com", "cisco webex", " | webex", "webex meeting",
-        "meet.jit.si", "jitsi meet",
-        "whereby.com", " - whereby",
-        "skype.com", "skype for business",
-        "discord",   # discord calls/huddles
-        "slack", "huddle",
-        "bluejeans.com",
-        "gotomeeting.com", "goto meeting", "goto.com/meeting",
+        "| microsoft teams", "- microsoft teams",
+        # Zoom — native "Zoom Meeting", web "zoom.us", sometimes just "Zoom"
+        "zoom.us", "zoom meeting", "zoom.com", "zoom - ", " - zoom",
+        # Cisco Webex
+        "webex.com", "cisco webex", " | webex", "webex meeting", "webex - ",
+        # Jitsi (public + self-hosted)
+        "meet.jit.si", "jitsi meet", "jitsi",
+        # Whereby
+        "whereby.com", "whereby - ", " - whereby",
+        # Skype (legacy + business)
+        "skype.com", "skype for business", " - skype",
+        # Discord (calls, huddles, stage channels)
+        "discord",
+        # Slack (huddles, calls)
+        " - slack", "slack | ", "huddle",
+        # BlueJeans
+        "bluejeans.com", "bluejeans - ",
+        # GoToMeeting
+        "gotomeeting.com", "goto meeting", "gotomeeting", "goto.com/meeting",
+        # Workplace from Meta
         "workplace.com", "workplace chat",
+        # Amazon Chime
         "chime.aws", "amazon chime",
-        "whatsapp web", "web.whatsapp.com",  # call on WhatsApp Web
+        # WhatsApp Web (audio/video calls via web client)
+        "whatsapp web", "web.whatsapp.com",
+        # Generic meeting-ish signals — catch-all for obscure apps that put
+        # "meeting" / "call" in the title. Low-false-positive because we
+        # still require the substring to appear in a visible top-level window.
+        "meeting in progress", "in-call",
     )
 
     def list_meeting_windows(self) -> list[dict]:

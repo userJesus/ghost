@@ -490,27 +490,10 @@
             </template>
         </div>
 
-        <!-- Live Q&A durante reunião -->
-        <div class="meeting-qa" x-show="meetingRunning" x-transition x-cloak>
-            <div class="meeting-qa-label">
-                <span class="meeting-qa-dot"></span>
-                Perguntar sobre a reunião em andamento
-            </div>
-            <div class="meeting-qa-row">
-                <input type="text" class="meeting-qa-input"
-                       x-model="meetingQuestion"
-                       @mousedown="onInputClick($event)"
-                       @keydown.enter.prevent="askMeetingLive()"
-                       :readonly="meetingQaAsking"
-                       placeholder="Ex: o que foi decidido sobre X?">
-                <button class="meeting-qa-btn"
-                        @click="askMeetingLive()"
-                        :disabled="meetingQaAsking || !meetingQuestion.trim()">
-                    <span x-show="!meetingQaAsking">Perguntar</span>
-                    <span x-show="meetingQaAsking" class="voice-spin"></span>
-                </button>
-            </div>
-        </div>
+        <!-- (Live meeting Q&A was previously a dedicated input here; since
+             1.1.10 it's routed through the main composer below — when
+             meetingRunning is true, sendMessage() calls meeting_live_question
+             instead of the regular chat endpoint.) -->
 
         <!-- Pending screen capture context panel -->
         <div class="transcript-panel capture-panel" x-show="pendingCapture" x-transition x-cloak>

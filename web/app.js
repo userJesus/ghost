@@ -1924,6 +1924,45 @@ function ghostApp() {
                 this.setStatus('Aguarde a transcrição terminar');
                 return;
             }
+
+            // Meeting live Q&A routing — if a meeting is recording, the
+            // user's question goes through meeting_live_question (which
+            // knows the transcript so far) instead of the regular chat
+            // endpoint. Keeps a single input field for everything instead
+            // of a separate meeting-specific textbox. Only text goes
+            // through this path — attachments/screenshots stay on the
+            // normal ask flow and aren't passed to the live Q&A.
+            if (this.meetingRunning) {
+                const q = this.inputText.trim();
+                if (!q || this.busy) return;
+                if (!this.settings?.has_openai_key) {
+                    this.messages.push({ role: 'user', text: q });
+                    this.messages.push({ role: 'assistant', needsApiKey: true, text: '' });
+                    this.inputText = '';
+                    return;
+                }
+                this.busy = true;
+                this.inputText = '';
+                this.messages.push({ role: 'user', text: q });
+                this.scrollToBottom();
+                try {
+                    const r = await window.pywebview.api.meeting_live_question(q);
+                    if (!r?.ok) {
+                        this.messages.push({ role: 'assistant', text: '(erro: ' + (r?.error || 'falha') + ')' });
+                    } else {
+                        this.messages.push({ role: 'assistant', text: r.text || '(sem resposta)' });
+                    }
+                    this.scrollToBottom();
+                    this._persistHistory();
+                    this._maybeAutoSpeak();
+                } catch (e) {
+                    this.messages.push({ role: 'assistant', text: '(erro: ' + (e?.message || e) + ')' });
+                } finally {
+                    this.busy = false;
+                }
+                return;
+            }
+
             const questionRaw = this.inputText.trim();
             const ctx = this.systemTranscript.trim();
             const files = [...this.droppedFiles];
