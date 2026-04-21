@@ -200,6 +200,11 @@ function ghostApp() {
             return 'BETA · Iniciar gravação (áudio + screenshots + resumo). Dica: pra reunião no navegador, abra a aba numa JANELA separada.';
         },
 
+        // ═══════════════════════════════════════════════════════════════
+        // INIT + BOOTSTRAP
+        //   Load modal partials, wait for pywebview bridge,
+        //   wire global keyhandler, load settings, start update check.
+        // ═══════════════════════════════════════════════════════════════
         // --- Init ---
         async init() {
             try {
@@ -353,6 +358,10 @@ function ghostApp() {
             }
         },
 
+        // ═══════════════════════════════════════════════════════════════
+        // VOICE INPUT
+        //   Mic or system-audio → Whisper transcribe → input field.
+        // ═══════════════════════════════════════════════════════════════
         // --- Voice input (mic/system → Whisper → input field) ---
         async toggleVoice(source) {
             // Mesmo source clicado 2x = para. Source diferente enquanto outro grava = troca.
@@ -505,6 +514,10 @@ function ghostApp() {
             }
         },
 
+        // ═══════════════════════════════════════════════════════════════
+        // BRANCH / CONVERSATION FORK
+        //   AI-summarizes chat up to a message; opens new conv with it.
+        // ═══════════════════════════════════════════════════════════════
         // --- Branch: resume o contexto até a mensagem selecionada e abre novo chat ---
         async branchFromMessage(idx) {
             console.log('[branch] clicked idx=', idx, 'msgs=', this.messages.length);
@@ -629,6 +642,9 @@ function ghostApp() {
             }
         },
 
+        // ═══════════════════════════════════════════════════════════════
+        // COPY / SELECT-RANGE / QUICK ACTIONS on assistant messages
+        // ═══════════════════════════════════════════════════════════════
         // --- Copiar resposta ---
         async copyAssistantMessage(idx, event) {
             const msg = this.messages[idx];
@@ -694,6 +710,11 @@ function ghostApp() {
             try { await window.pywebview.api.voice_cancel(); } catch (e) {}
         },
 
+        // ═══════════════════════════════════════════════════════════════
+        // TEXT-TO-SPEECH (browser speechSynthesis)
+        //   Voice picker (Natural/Neural pt-BR), auto-speak,
+        //   per-message speak/stop.
+        // ═══════════════════════════════════════════════════════════════
         // --- TTS (text-to-speech) ---
         _initTTS() {
             if (!('speechSynthesis' in window)) return;
@@ -1294,6 +1315,11 @@ function ghostApp() {
             }
         },
 
+        // ═══════════════════════════════════════════════════════════════
+        // WINDOW CONTROLS
+        //   Close, minimize, maximize, dock-to-edge, compact-bar mode.
+        //   Bridges to pywebview.api.{enter_maximized, exit_*, etc}.
+        // ═══════════════════════════════════════════════════════════════
         // --- Window controls ---
         closeApp() {
             // Ao clicar no X, não fecha direto — pergunta o que fazer
@@ -1831,6 +1857,9 @@ function ghostApp() {
             this.scrollToBottom();
         },
 
+        // ═══════════════════════════════════════════════════════════════
+        // FOCUS MANAGEMENT (legacy no-op — NOACTIVATE is permanent)
+        // ═══════════════════════════════════════════════════════════════
         // --- Focus management (no-op: NOACTIVATE is permanent) ---
         onInputFocus() {},
         onInputBlur() {},
@@ -1850,6 +1879,11 @@ function ghostApp() {
             });
         },
 
+        // ═══════════════════════════════════════════════════════════════
+        // MARKDOWN RENDERING
+        //   marked.parse() + post-process: code-block copy buttons,
+        //   sanitize, inline action injection.
+        // ═══════════════════════════════════════════════════════════════
         // --- Markdown ---
         renderMarkdown(text) {
             if (!text) return '';
@@ -1884,6 +1918,11 @@ function ghostApp() {
             return !!this.selectedPreset;
         },
 
+        // ═══════════════════════════════════════════════════════════════
+        // CAPTURE FLOWS
+        //   Fullscreen / region / scroll-capture, watch toggle,
+        //   drag-drop file ingestion, sensitivity pre-check.
+        // ═══════════════════════════════════════════════════════════════
         // --- Capture flows ---
         // Agora a captura NÃO envia direto: ela deixa a imagem pendente acima
         // do composer pra o usuário digitar/gravar a pergunta e enviar junto.
