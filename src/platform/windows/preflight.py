@@ -13,13 +13,11 @@ this fixed-wait approach, so the timing here is load-bearing — do not
 """
 from __future__ import annotations
 
-import ctypes
 import glob
 import os
 import shutil
 import subprocess
 import time
-from ctypes import wintypes
 from pathlib import Path
 
 from src.infra.logging_setup import get_logger
@@ -45,105 +43,30 @@ _GHOST_IMAGES: tuple[str, ...] = (
     "CefSharp.BrowserSubprocess.exe",
 )
 
-# Lowercased webview2 helper names for fast membership check against
-# the szExeFile field of PROCESSENTRY32W.
-_WEBVIEW_HELPER_NAMES: frozenset[str] = frozenset({
-    "msedgewebview2.exe",
-    "webview2host.exe",
-    "cefsharp.browsersubprocess.exe",
-})
+def _kill_webview2_helpers() -> bool:
+    """One-shot kill of stale WebView2/CefSharp helpers from prior sessions.
 
+    Single-pass by design: previous aggressive-retry versions (6 rounds ×
+    3 sweeps) added up to 9 seconds to cold-boot startup, because on a
+    freshly booted system Teams/Outlook/etc. keep spawning NEW webview2
+    helpers faster than we can kill them. We'd loop, kill a batch,
+    another batch spawns, kill again — wasting time while the user
+    waited.
 
-def _snapshot_processes() -> tuple[dict[int, tuple[int, str]], set[int]] | None:
-    """Return ({pid: (ppid, lower(name))}, set(alive_pids)) using
-    CreateToolhelp32Snapshot. Returns None on failure so the caller can
-    fall back to the legacy global-kill path.
-
-    Fast (~10–30ms for a few hundred processes), in-process, and no
-    dependency on WMI/PowerShell/psutil — reuses the same ctypes pattern
-    that src/api.py already uses for _snapshot_own_webview2_pids."""
-    if not hasattr(ctypes, "windll"):
-        return None
-    try:
-        kernel32 = ctypes.windll.kernel32
-        TH32CS_SNAPPROCESS = 0x00000002
-
-        class PROCESSENTRY32W(ctypes.Structure):
-            _fields_ = [
-                ("dwSize", wintypes.DWORD),
-                ("cntUsage", wintypes.DWORD),
-                ("th32ProcessID", wintypes.DWORD),
-                ("th32DefaultHeapID", ctypes.c_void_p),
-                ("th32ModuleID", wintypes.DWORD),
-                ("cntThreads", wintypes.DWORD),
-                ("th32ParentProcessID", wintypes.DWORD),
-                ("pcPriClassBase", wintypes.LONG),
-                ("dwFlags", wintypes.DWORD),
-                ("szExeFile", wintypes.WCHAR * 260),
-            ]
-
-        kernel32.CreateToolhelp32Snapshot.restype = wintypes.HANDLE
-        kernel32.Process32FirstW.argtypes = [wintypes.HANDLE, ctypes.POINTER(PROCESSENTRY32W)]
-        kernel32.Process32NextW.argtypes = [wintypes.HANDLE, ctypes.POINTER(PROCESSENTRY32W)]
-        kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
-
-        snap = kernel32.CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)
-        INVALID = wintypes.HANDLE(-1).value
-        if not snap or snap == INVALID:
-            return None
-
-        procs: dict[int, tuple[int, str]] = {}
-        try:
-            pe = PROCESSENTRY32W()
-            pe.dwSize = ctypes.sizeof(pe)
-            if kernel32.Process32FirstW(snap, ctypes.byref(pe)):
-                while True:
-                    procs[pe.th32ProcessID] = (
-                        pe.th32ParentProcessID,
-                        pe.szExeFile.lower(),
-                    )
-                    if not kernel32.Process32NextW(snap, ctypes.byref(pe)):
-                        break
-        finally:
-            kernel32.CloseHandle(snap)
-
-        return procs, set(procs.keys())
-    except Exception as e:
-        log.warning("preflight: process snapshot failed: %s", e)
-        return None
-
-
-def _kill_pids(pids: list[int]) -> int:
-    """Taskkill each PID individually. Returns count of successful kills.
-
-    /F because pywebview's msedgewebview2 doesn't honor graceful signals
-    (it's a child of a dead parent at this point). No /T needed since we
-    target leaf helpers directly."""
-    killed = 0
-    for pid in pids:
-        try:
-            r = subprocess.run(
-                ["taskkill", "/F", "/PID", str(pid)],
-                capture_output=True, timeout=2,
-                creationflags=_CREATE_NO_WINDOW,
-            )
-            if r.returncode == _TASKKILL_OK:
-                killed += 1
-        except subprocess.TimeoutExpired:
-            log.warning("preflight: taskkill pid=%d timed out", pid)
-        except Exception as e:
-            log.warning("preflight: taskkill pid=%d error: %s", pid, e)
-    return killed
-
-
-def _legacy_global_kill() -> bool:
-    """Fallback: kill all webview2 helpers by image name, globally.
-
-    This is the pre-1.1.26 behavior — fast and reliable but with
-    collateral damage on Teams/Outlook/Edge/VS Code webviews. Used only
-    when the targeted path can't enumerate processes (rare: locked-down
-    AV / group policy / corrupted kernel32 stub)."""
+    Reality check: `Ghost.exe` doesn't spawn children until its OWN
+    `webview.start()` is called, and that hasn't happened yet at
+    preflight time. So any msedgewebview2 alive now is:
+      (a) our own orphan from a previous crash/close → killing it is right
+      (b) another app's webview → killing it is collateral damage
+    Either way, ONE kill pass + a 600ms settle is enough. The installer
+    runs its own kill sequence during updates, and `close_app` explicitly
+    kills our own children on clean exit.
+    """
+    killed_any = False
     for image in _GHOST_IMAGES:
+        # Never kill Ghost.exe here — the single-instance mutex guard in
+        # main handles "another Ghost already running". This function is
+        # about webview2 helpers orphaned from PRIOR sessions.
         if image == "Ghost.exe":
             continue
         try:
@@ -153,69 +76,14 @@ def _legacy_global_kill() -> bool:
                 creationflags=_CREATE_NO_WINDOW,
             )
             if r.returncode == _TASKKILL_OK:
-                log.info("preflight(legacy): killed stale %s", image)
+                log.info("preflight: killed stale %s", image)
+                killed_any = True
         except subprocess.TimeoutExpired:
-            log.warning("preflight(legacy): taskkill %s timed out", image)
+            log.warning("preflight: taskkill %s timed out (skipping)", image)
         except Exception as e:
-            log.warning("preflight(legacy): taskkill %s error: %s", image, e)
-    return True
-
-
-def _kill_webview2_helpers() -> bool:
-    """Kill webview2 helpers that are TRUE ZOMBIES — i.e. whose parent
-    process is dead — and spare helpers whose parent is still alive
-    (those belong to Teams / Outlook / Edge / VS Code).
-
-    Why the targeted approach: the pre-1.1.26 preflight did
-    `taskkill /F /IM msedgewebview2.exe` globally, which also nuked the
-    webviews of any other app running on the machine. Those apps would
-    immediately respawn their helpers while our own Ghost was mid-init,
-    creating a storm of 10+ webview2 processes competing for
-    GPU/CPU/disk. Ghost's message pump would starve and Windows would
-    paint the (Não Respondendo) overlay — the exact symptom we were
-    trying to PREVENT with preflight cleanup.
-
-    Reality check at preflight time: the single-instance mutex has
-    already confirmed no other Ghost is alive. So any msedgewebview2
-    process we see now is either:
-      (a) a zombie whose parent Ghost.exe crashed/was force-killed last
-          session — its ParentProcessId points to a PID that no longer
-          exists. Kill it.
-      (b) a child of Teams.exe / OUTLOOK.EXE / msedge.exe / Code.exe /
-          etc. — its ParentProcessId points to a living PID. SPARE it.
-    Distinguishing between (a) and (b) with a parent-alive check is
-    precise, cheap, and has no false positives.
-
-    If the process snapshot can't be taken (rare), we fall back to the
-    legacy global kill so preflight never becomes a no-op that lets
-    zombies survive. Better to be noisy than to leak zombies."""
-    snap = _snapshot_processes()
-    if snap is None:
-        log.info("preflight: snapshot unavailable, using legacy global kill")
-        return _legacy_global_kill()
-
-    procs, alive_pids = snap
-
-    zombie_pids: list[int] = []
-    spared = 0
-    for pid, (ppid, name) in procs.items():
-        if name not in _WEBVIEW_HELPER_NAMES:
-            continue
-        # Parent alive → third-party app's webview, not ours. Spare it.
-        if ppid in alive_pids:
-            spared += 1
-            continue
-        # Parent dead → orphan. This is what we came here to clean up.
-        zombie_pids.append(pid)
-
-    if not zombie_pids:
-        log.info("preflight: no webview2 zombies found (spared %d third-party helpers)",
-                 spared)
-        return True
-
-    killed = _kill_pids(zombie_pids)
-    log.info("preflight: killed %d webview2 zombie(s), spared %d third-party helper(s)",
-             killed, spared)
+            log.warning("preflight: taskkill %s error: %s", image, e)
+    # Return True unconditionally — the downstream caller only logs the
+    # result, never gates startup on it. A failure here is never fatal.
     return True
 
 

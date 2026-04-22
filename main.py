@@ -101,99 +101,35 @@ def _find_own_top_window() -> int:
 
 def _apply_window_tweaks(api: GhostAPI, init_x: int = 100, init_y: int = 100,
                          init_w: int = 580, init_h: int = 720):
-    """Poll for our window's HWND, apply protection styles WHILE the window
-    is parked off-screen, then move it on-screen in a single SetWindowPos.
+    """Poll for our window's HWND until found (up to 10s).
 
-    Cold-init message-pump starvation — the root cause of "Ghost.exe não
-    está respondendo" on cold boot + fresh install — is avoided because
-    the window never occupies visible screen real-estate during the 3–10s
-    that WebView2 spends in its startup blocking code. From the user's
-    perspective, there is simply "nothing" until Ghost is ready; there is
-    no unresponsive-looking window for Windows to stamp with the (Não
-    Respondendo) overlay, and therefore nothing to force-kill. (The
-    v1.1.19 `hidden=True` + on_ready attempt at the same goal failed on
-    some setups because the window never got un-hidden; off-screen
-    sidesteps that class of bugs because the window is treated as visible
-    throughout — only its coordinates are unusual.)
-
-    Protection-styles-before-on-screen ordering also closes a subtle
-    screen-capture leak that existed pre-1.1.26: pywebview would paint
-    1–2 frames at the intended rect before the tweaks thread got around
-    to applying WDA_EXCLUDEFROMCAPTURE. Screen-share tools could
-    theoretically catch that flash. Now WDA lands while the window is
-    still off-screen, so the FIRST pixel the user (or a capture tool)
-    ever sees is already protected.
-
-    The final SetWindowPos uses SWP_ASYNCWINDOWPOS so that if WebView2's
-    pump is still cold, we post-and-return instead of blocking our own
-    thread on a drained UI thread (same pattern as hide_from_taskbar
-    since 1.1.8).
-
-    Poll budget reduced from 50×200ms = 10s to 30×100ms = 3s. If the
-    HWND hasn't appeared in 3s something is very wrong; the safety
-    fallback started alongside this thread will call window.move()
-    via pywebview as last-ditch recovery so the user never ends up
-    staring at a blank desktop."""
-    hwnd = 0
-    attempt = 0
-    for attempt in range(30):
-        time.sleep(0.1)
+    The win32 calls here (hide_from_capture / hide_from_taskbar /
+    make_non_activating) all touch the window's style, and we run in a
+    background thread. Since 1.1.8 `hide_from_taskbar` uses SWP_ASYNCWINDOWPOS
+    so its SetWindowPos doesn't block waiting for WebView2's UI thread to
+    drain — earlier versions could freeze the entire init chain at
+    `hide_from_capture=True` when WebView2 was cold-initializing on a
+    resource-contended system, because the next SetWindowPos was sent
+    synchronously and never returned until the UI thread was free. The
+    ASYNC flag makes that post-and-return."""
+    for attempt in range(50):
+        time.sleep(0.2)
         hwnd = _find_own_top_window()
         if hwnd:
-            break
-
-    if not hwnd:
-        print("[warn] HWND not found after 3s polling — safety timer will handle move", flush=True)
-        try:
+            api.set_hwnd(hwnd)
+            print(f"[init] HWND={hwnd} (after {attempt + 1} attempts)", flush=True)
+            print(f"[init] hide_from_capture={hide_from_capture(hwnd, True)}", flush=True)
+            print(f"[init] hide_from_taskbar={hide_from_taskbar(hwnd)}", flush=True)
+            try:
+                make_non_activating(hwnd)
+                print("[init] NOACTIVATE applied (permanent)", flush=True)
+            except Exception as e:
+                print(f"[init] NOACTIVATE failed: {e}", flush=True)
+            _register_global_hotkey(hwnd)
+            # Also find the response popup HWND and protect it
             _apply_response_popup_tweaks(api)
-        except Exception as e:
-            print(f"[warn] popup tweak fallback error: {e}", flush=True)
-        return
-
-    api.set_hwnd(hwnd)
-    print(f"[init] HWND={hwnd} (after {attempt + 1} attempts)", flush=True)
-
-    # Protection styles — each wrapped individually so one failure
-    # doesn't prevent the others (and, critically, doesn't prevent the
-    # on-screen move that follows).
-    try:
-        print(f"[init] hide_from_capture={hide_from_capture(hwnd, True)}", flush=True)
-    except Exception as e:
-        print(f"[init] hide_from_capture failed: {e}", flush=True)
-    try:
-        print(f"[init] hide_from_taskbar={hide_from_taskbar(hwnd)}", flush=True)
-    except Exception as e:
-        print(f"[init] hide_from_taskbar failed: {e}", flush=True)
-    try:
-        make_non_activating(hwnd)
-        print("[init] NOACTIVATE applied (permanent)", flush=True)
-    except Exception as e:
-        print(f"[init] NOACTIVATE failed: {e}", flush=True)
-
-    # Now move the window on-screen. ASYNC so we don't block if the pump
-    # is mid-WebView2-cold-init. SWP_NOZORDER keeps pywebview's on_top
-    # z-order; SWP_NOACTIVATE avoids stealing foreground at startup.
-    try:
-        SWP_NOZORDER_LOCAL = 0x0004
-        SWP_NOACTIVATE_LOCAL = 0x0010
-        SWP_ASYNCWINDOWPOS_LOCAL = 0x4000
-        win32gui.SetWindowPos(
-            hwnd, 0, int(init_x), int(init_y), int(init_w), int(init_h),
-            SWP_NOZORDER_LOCAL | SWP_NOACTIVATE_LOCAL | SWP_ASYNCWINDOWPOS_LOCAL,
-        )
-        print(f"[init] moved on-screen to ({init_x},{init_y}) {init_w}x{init_h}", flush=True)
-    except Exception as e:
-        print(f"[init] on-screen move failed: {e}", flush=True)
-
-    try:
-        _register_global_hotkey(hwnd)
-    except Exception as e:
-        print(f"[init] hotkey register failed: {e}", flush=True)
-
-    try:
-        _apply_response_popup_tweaks(api)
-    except Exception as e:
-        print(f"[warn] popup tweak error: {e}", flush=True)
+            return
+    print("[warn] HWND not found after 10s polling", flush=True)
 
 
 def _apply_response_popup_tweaks(api: GhostAPI):
@@ -648,31 +584,22 @@ def main():
         except Exception as e:
             _slog(f"work area / DPI query failed ({e}), falling back to 720x720")
 
-        _slog("creating main window (parked off-screen during WebView2 cold init)")
-        # PARK OFF-SCREEN: the main window is created at (-20000, -20000)
-        # so that during the 3–10s that WebView2 spends in its cold-init
-        # blocking code (cold boot, fresh install, or post-auto-update),
-        # there is no visible, unresponsive window for Windows to stamp
-        # with the (Não Respondendo) overlay. The _apply_window_tweaks
-        # thread below applies WDA_EXCLUDEFROMCAPTURE + NOACTIVATE +
-        # no-taskbar while we're still off-screen, then SetWindowPos's
-        # the window onto its real rect (init_x, init_y, init_w, init_h)
-        # via SWP_ASYNCWINDOWPOS so the user's first visible frame is
-        # already protected AND the pump is already responsive.
-        #
-        # The v1.1.19 attempt at this same goal used `hidden=True` +
-        # an on_ready callback; that broke on some setups (window
-        # never became visible) and was reverted in v1.1.20. Off-screen
-        # is immune to that class of bug because the window is
-        # `WS_VISIBLE` throughout — only its coordinates are unusual.
+        _slog("creating main window (pre-sized to logical work area)")
+        # NOTE: hidden=True attempted in v1.1.19 to suppress the Windows
+        # "não respondendo" overlay during WebView2 cold init, but it
+        # broke the normal launch path on some setups — the window
+        # wouldn't become visible even after webview was ready. Reverted
+        # to visible-from-creation in v1.1.20. Cold-boot hang mitigation
+        # now relies only on the faster preflight + cache warming, which
+        # are additive wins that don't change window visibility.
         window = webview.create_window(
             "Ghost",
             str(WEB_INDEX),
             js_api=api,
             width=init_w,
             height=init_h,
-            x=-20000,
-            y=-20000,
+            x=init_x,
+            y=init_y,
             min_size=(40, 40),
             frameless=True,
             easy_drag=False,
@@ -722,42 +649,9 @@ def main():
         )
         api.set_dropdown_window(dropdown_win)
 
-        # Tweaks thread: finds HWND, applies protection styles, THEN
-        # moves window on-screen to (init_x, init_y, init_w, init_h).
-        # Critical: pass the REAL init_x/init_y (DPI-corrected work-area
-        # coordinates), not placeholders — the thread uses them for the
-        # final on-screen SetWindowPos.
-        threading.Thread(
-            target=_apply_window_tweaks,
-            args=(api, init_x, init_y, init_w, init_h),
-            daemon=True,
-        ).start()
-
-        # Safety fallback: if the tweaks thread fails to find HWND within
-        # 5s (e.g., Win32 enum explodes on some locked-down antivirus
-        # setup), fall back to pywebview's cross-thread window.move +
-        # resize so the user never ends up staring at a blank desktop
-        # while Ghost is alive but off-screen. The tweaks thread nearly
-        # always wins this race — typical HWND-acquire takes <1s — so
-        # this only fires as genuine disaster recovery.
-        def _safety_move():
-            try:
-                time.sleep(5.0)
-                if not api._hwnd:
-                    print("[safety] tweaks thread never set HWND — using "
-                          "pywebview window.move() fallback", flush=True)
-                    try:
-                        window.move(init_x, init_y)
-                    except Exception as e:
-                        print(f"[safety] window.move failed: {e}", flush=True)
-                    try:
-                        window.resize(init_w, init_h)
-                    except Exception as e:
-                        print(f"[safety] window.resize failed: {e}", flush=True)
-            except Exception as e:
-                print(f"[safety] move fallback error: {e}", flush=True)
-
-        threading.Thread(target=_safety_move, daemon=True).start()
+        threading.Thread(target=_apply_window_tweaks,
+                         args=(api, 100, 100, init_w, init_h),
+                         daemon=True).start()
 
         debug_mode = "--debug" in sys.argv
         # Pin WebView2's UserDataFolder to a stable location under ~/.ghost
