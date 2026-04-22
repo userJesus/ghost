@@ -168,35 +168,41 @@ def _apply_window_tweaks(api: GhostAPI, init_x: int = 100, init_y: int = 100,
         # Hotkey FIRST — it doesn't depend on the window's message pump
         # (pynput installs a global keyboard hook from its own listener
         # thread), so it completes in <100ms even when the pump is cold.
-        # The hotkey is also what users actually need to interact with
-        # Ghost, so getting it registered fast matters more than the
-        # cosmetic taskbar/noactivate styles that follow.
         try:
             _register_global_hotkey(hwnd)
         except Exception as e:
             print(f"[init] hotkey register (deferred) failed: {e}", flush=True)
-        # THEN the blocking Win32 calls. Each one sends WM_STYLECHANGING/
-        # WM_STYLECHANGED/WM_NCCALCSIZE synchronously to the window's
-        # thread, which can still be saturated by WebView2 cold init for
-        # 10–30s. If they hang here, the cosmetic effect is: Ghost stays
-        # in the taskbar and can take focus for that window. The hotkey
-        # (above) and the main Ghost UI (driven by webview.start() on
-        # the main thread) are already live, so the user isn't blocked —
-        # only the taskbar/noactivate/popup cosmetics lag behind.
-        try:
-            r = hide_from_taskbar(hwnd)
-            print(f"[init] hide_from_taskbar (deferred)={r}", flush=True)
-        except Exception as e:
-            print(f"[init] hide_from_taskbar (deferred) failed: {e}", flush=True)
-        try:
-            make_non_activating(hwnd)
-            print("[init] NOACTIVATE (deferred) applied", flush=True)
-        except Exception as e:
-            print(f"[init] NOACTIVATE (deferred) failed: {e}", flush=True)
-        try:
-            _apply_response_popup_tweaks(api)
-        except Exception as e:
-            print(f"[warn] popup tweak (deferred) error: {e}", flush=True)
+
+        # GATE: wait for the main window's pump to be responsive before
+        # issuing ANY Win32 call that sends synchronous messages. This
+        # is the definitive fix for the user-visible crash reported
+        # through v1.1.27 — where hide_from_taskbar piled SendMessage
+        # on top of a saturated cold-init pump and triggered the
+        # "(Não Respondendo)" overlay.
+        if _wait_for_pump_alive(hwnd, timeout_s=15.0):
+            print("[init] window pump confirmed responsive, applying tweaks", flush=True)
+            try:
+                r = hide_from_taskbar(hwnd)
+                print(f"[init] hide_from_taskbar (deferred)={r}", flush=True)
+            except Exception as e:
+                print(f"[init] hide_from_taskbar (deferred) failed: {e}", flush=True)
+            try:
+                make_non_activating(hwnd)
+                print("[init] NOACTIVATE (deferred) applied", flush=True)
+            except Exception as e:
+                print(f"[init] NOACTIVATE (deferred) failed: {e}", flush=True)
+            try:
+                _apply_response_popup_tweaks(api)
+            except Exception as e:
+                print(f"[warn] popup tweak (deferred) error: {e}", flush=True)
+        else:
+            # Pump still not responsive after 15s — skip the cosmetic
+            # tweaks rather than hang the deferred thread forever.
+            # Ghost stays visible in taskbar + can take focus; both are
+            # livable glitches versus a "not responding" overlay that
+            # users force-kill.
+            print("[warn] pump not responsive in 15s — skipping "
+                  "hide_from_taskbar/NOACTIVATE/popup tweaks", flush=True)
 
     threading.Thread(
         target=_deferred_blocking_tweaks,
@@ -204,6 +210,53 @@ def _apply_window_tweaks(api: GhostAPI, init_x: int = 100, init_y: int = 100,
         name="ghost-deferred-tweaks",
     ).start()
     print("[init] tweaks thread returning (deferred work spawned)", flush=True)
+
+
+def _wait_for_pump_alive(target_hwnd: int, timeout_s: float = 15.0) -> bool:
+    """Return True once SendMessageTimeout(WM_NULL, SMTO_ABORTIFHUNG)
+    proves the target window's message pump is responsive.
+
+    This is the key defense against the "(Não Respondendo)" overlay
+    users experienced on close→reopen-within-a-few-seconds. Up to
+    v1.1.28 the deferred thread would fire SetWindowLong-based calls
+    (hide_from_taskbar on the main window AND the response + dropdown
+    popups) immediately after HWND acquisition; SetWindowLong sends
+    WM_STYLECHANGING/CHANGED synchronously to the target thread, so if
+    that thread was still in WebView2 cold init, our SendMessage sat in
+    the queue ahead of (or behind) the OS's periodic WM_NULL ping. The
+    pump — already saturated — couldn't acknowledge the ping within
+    the 5s window Windows uses to flag "application not responding",
+    so the overlay appeared and users force-killed, leaving orphan
+    state that made the NEXT launch worse.
+
+    Each pywebview window runs its own Win32 message pump, so we gate
+    on the SPECIFIC target_hwnd — main window, response popup, and
+    dropdown popup each get their own independent check before we
+    fire any blocking Win32 call at them.
+
+    SMTO_ABORTIFHUNG = 0x0002: if Windows has already marked the
+    target as hung (~5s after the pump stops responding), we return
+    failure IMMEDIATELY instead of waiting the full per-attempt
+    timeout. Lets us bail on a window the OS already considers dead."""
+    import ctypes
+    user32 = ctypes.windll.user32
+    SMTO_ABORTIFHUNG = 0x0002  # noqa: N806
+    WM_NULL = 0x0000  # noqa: N806
+    result = ctypes.c_ulong()
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        try:
+            r = user32.SendMessageTimeoutW(
+                target_hwnd, WM_NULL, 0, 0,
+                SMTO_ABORTIFHUNG, 300, ctypes.byref(result),
+            )
+            if r != 0:
+                return True
+        except Exception:
+            # Can't probe — assume alive so we don't skip forever.
+            return True
+        time.sleep(0.3)
+    return False
 
 
 def _apply_response_popup_tweaks(api: GhostAPI):
@@ -214,46 +267,85 @@ def _apply_response_popup_tweaks(api: GhostAPI):
         response_hwnd = 0
         dropdown_hwnd = 0
 
-        def cb(hwnd, _):
+        def enum_popups():
             nonlocal response_hwnd, dropdown_hwnd
-            try:
-                _, wpid = win32process.GetWindowThreadProcessId(hwnd)
-                if wpid != pid or hwnd == main_hwnd:
-                    return True
-                title = win32gui.GetWindowText(hwnd)
-                if "Response" in title:
-                    response_hwnd = hwnd
-                elif "Dropdown" in title:
-                    dropdown_hwnd = hwnd
-            except Exception:
-                pass
-            return True
 
-        win32gui.EnumWindows(cb, None)
-        # Response popup gets the full treatment (capture-excluded + no-taskbar).
-        # hide_from_taskbar's SetWindowPos is async (SWP_ASYNCWINDOWPOS) since
-        # 1.1.8 so this no longer blocks on a cold WebView2 thread.
+            def cb(hwnd, _):
+                nonlocal response_hwnd, dropdown_hwnd
+                try:
+                    _, wpid = win32process.GetWindowThreadProcessId(hwnd)
+                    if wpid != pid or hwnd == main_hwnd:
+                        return True
+                    # GetWindowText for OWN process is a direct read from
+                    # the window struct — no SendMessage, no cross-thread
+                    # wait — so it's safe even while our popup pumps are
+                    # still cold.
+                    title = win32gui.GetWindowText(hwnd)
+                    if not response_hwnd and "Response" in title:
+                        response_hwnd = hwnd
+                    elif not dropdown_hwnd and "Dropdown" in title:
+                        dropdown_hwnd = hwnd
+                except Exception:
+                    pass
+                return True
+
+            win32gui.EnumWindows(cb, None)
+
+        # Poll for both popup HWNDs — pywebview creates the popups with
+        # hidden=True and the native HWND can take up to a few seconds
+        # to show up in EnumWindows (the window is registered but may
+        # not yet be fully constructed in Windows' top-level list).
+        # Budget: 25 × 200ms = 5s. This fixed a cosmetic/privacy leak
+        # where the dropdown popup could miss its WDA_EXCLUDEFROMCAPTURE
+        # because a single-shot enum ran before the HWND was ready.
+        for attempt in range(25):
+            enum_popups()
+            if response_hwnd and dropdown_hwnd:
+                break
+            time.sleep(0.2)
+
+        if not response_hwnd:
+            print("[warn] response popup HWND not found in 5s polling", flush=True)
+        if not dropdown_hwnd:
+            print("[warn] dropdown popup HWND not found in 5s polling", flush=True)
+        # Response popup gets the full treatment (capture-excluded +
+        # no-taskbar). hide_from_capture is safe inline (it's a pure
+        # SetWindowDisplayAffinity — no window messages sent), but
+        # hide_from_taskbar calls SetWindowLong which sends
+        # WM_STYLECHANGING/CHANGED synchronously to the popup's OWN
+        # message pump thread. During cold init each pywebview window
+        # has its own saturated pump, so we gate each popup's blocking
+        # call on its own pump being responsive.
         if response_hwnd:
             try:
                 api.set_response_hwnd(response_hwnd)
                 hide_from_capture(response_hwnd, True)
-                hide_from_taskbar(response_hwnd)
-                print(f"[init] response HWND={response_hwnd}", flush=True)
+                if _wait_for_pump_alive(response_hwnd, timeout_s=15.0):
+                    hide_from_taskbar(response_hwnd)
+                    print(f"[init] response HWND={response_hwnd}", flush=True)
+                else:
+                    print(f"[warn] response popup pump not responsive — "
+                          f"skipping hide_from_taskbar for response (hwnd={response_hwnd})",
+                          flush=True)
             except Exception as e:
                 print(f"[warn] response popup protect: {e}", flush=True)
 
         # Dropdown popup: full treatment (capture-excluded + no-taskbar).
-        # WS_EX_TOOLWINDOW only removes from taskbar + Alt+Tab — it does NOT
-        # suppress activation, so the JS `blur` handler that closes the
-        # dropdown on click-outside keeps working. (Earlier comment here
-        # claimed otherwise and was wrong: the main Ghost window has
-        # TOOLWINDOW applied and receives focus fine.)
+        # Same per-pump gate as response popup. WS_EX_TOOLWINDOW only
+        # removes from taskbar + Alt+Tab — it does NOT suppress
+        # activation, so the JS `blur` handler that closes the dropdown
+        # on click-outside keeps working.
         if dropdown_hwnd:
             try:
                 api.set_dropdown_hwnd(dropdown_hwnd)
                 hide_from_capture(dropdown_hwnd, True)
-                hide_from_taskbar(dropdown_hwnd)
-                print(f"[init] dropdown HWND={dropdown_hwnd}", flush=True)
+                if _wait_for_pump_alive(dropdown_hwnd, timeout_s=15.0):
+                    hide_from_taskbar(dropdown_hwnd)
+                    print(f"[init] dropdown HWND={dropdown_hwnd}", flush=True)
+                else:
+                    print(f"[warn] dropdown popup pump not responsive — "
+                          f"skipping hide_from_taskbar for dropdown (hwnd={dropdown_hwnd})",
+                          flush=True)
             except Exception as e:
                 print(f"[warn] dropdown popup protect: {e}", flush=True)
     except Exception as e:
