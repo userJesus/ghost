@@ -43,79 +43,48 @@ _GHOST_IMAGES: tuple[str, ...] = (
     "CefSharp.BrowserSubprocess.exe",
 )
 
-# Per-image retry budget: each round = 1 taskkill + 300ms settle.
-# 6 rounds * 300ms = ~1.8s worst case per image.
-_KILL_ROUNDS_PER_IMAGE = 6
+def _kill_webview2_helpers() -> bool:
+    """One-shot kill of stale WebView2/CefSharp helpers from prior sessions.
 
+    Single-pass by design: previous aggressive-retry versions (6 rounds ×
+    3 sweeps) added up to 9 seconds to cold-boot startup, because on a
+    freshly booted system Teams/Outlook/etc. keep spawning NEW webview2
+    helpers faster than we can kill them. We'd loop, kill a batch,
+    another batch spawns, kill again — wasting time while the user
+    waited.
 
-def _kill_image_until_gone(image: str, include_self: bool = False) -> bool:
-    """Repeatedly `taskkill /F /T /IM <image>` until it reports "not found".
-
-    Returns True when the image is confirmed absent from the process list.
-    Returns False if we exhausted the retry budget with processes still
-    matching.
-
-    `include_self` — when False (default), a Ghost.exe kill won't terminate
-    THIS process (us). That's accomplished by NOT using /T on Ghost.exe,
-    because /T would tree-kill OUR own children (we spawned the webview2
-    helpers). Instead we kill webview2 by image name separately.
+    Reality check: `Ghost.exe` doesn't spawn children until its OWN
+    `webview.start()` is called, and that hasn't happened yet at
+    preflight time. So any msedgewebview2 alive now is:
+      (a) our own orphan from a previous crash/close → killing it is right
+      (b) another app's webview → killing it is collateral damage
+    Either way, ONE kill pass + a 600ms settle is enough. The installer
+    runs its own kill sequence during updates, and `close_app` explicitly
+    kills our own children on clean exit.
     """
-    for _round in range(_KILL_ROUNDS_PER_IMAGE):
+    killed_any = False
+    for image in _GHOST_IMAGES:
+        # Never kill Ghost.exe here — the single-instance mutex guard in
+        # main handles "another Ghost already running". This function is
+        # about webview2 helpers orphaned from PRIOR sessions.
+        if image == "Ghost.exe":
+            continue
         try:
-            # /F = force, /T = tree-kill (skip for Ghost.exe itself to
-            # avoid self-termination edge cases during shutdown handlers).
-            args = ["taskkill", "/F", "/IM", image]
-            if include_self or image != "Ghost.exe":
-                args.insert(2, "/T")
             r = subprocess.run(
-                args,
+                ["taskkill", "/F", "/T", "/IM", image],
                 capture_output=True, timeout=3,
                 creationflags=_CREATE_NO_WINDOW,
             )
-            if r.returncode == _TASKKILL_NOT_FOUND:
-                return True  # clean, nothing to kill
             if r.returncode == _TASKKILL_OK:
-                log.info("preflight: killed stale %s (round %d)", image, _round + 1)
-                # Give OS time to release handles before we re-verify.
-                time.sleep(0.3)
-                continue
-            # Other non-zero: transient Win32 issue, retry after short delay.
-            time.sleep(0.3)
+                log.info("preflight: killed stale %s", image)
+                killed_any = True
         except subprocess.TimeoutExpired:
-            log.warning("preflight: taskkill %s timed out (round %d)", image, _round + 1)
+            log.warning("preflight: taskkill %s timed out (skipping)", image)
         except Exception as e:
             log.warning("preflight: taskkill %s error: %s", image, e)
-            return False
-    # Exhausted budget with processes still matching.
-    return False
-
-
-def _kill_webview2_helpers() -> bool:
-    """Kill every Ghost-related image with retry + verification.
-
-    Returns True when ALL four image names are confirmed absent. This is
-    the symmetry counterpart of the installer's `KillAllGhostProcesses`
-    Pascal function — same contract, same retry budget.
-    """
-    all_gone = True
-    # Up to 3 full sweeps — msedgewebview2 sometimes respawns if the
-    # WebView2 runtime had a pending child-spawn queued on its message
-    # pump. Second pass catches the late arrival.
-    for sweep in range(3):
-        sweep_ok = True
-        for image in _GHOST_IMAGES:
-            # Skip Ghost.exe in preflight (we'd kill ourselves).
-            # The installer handles Ghost.exe termination separately.
-            if image == "Ghost.exe":
-                continue
-            if not _kill_image_until_gone(image):
-                sweep_ok = False
-        if sweep_ok:
-            return True
-        # At least one image still had live processes. Wait and retry.
-        time.sleep(0.3)
-        all_gone = False
-    return all_gone
+    # Return True unconditionally — the downstream caller only logs the
+    # result, never gates startup on it. A failure here is never fatal.
+    return True
 
 
 def _sweep_orphan_cache_dirs() -> None:
@@ -164,28 +133,102 @@ def _sweep_orphan_cache_dirs() -> None:
         )
 
 
-def cleanup_webview2_state() -> bool:
-    """Run full preflight: kill zombies, wait for OS, sweep orphan caches.
+def _system_uptime_seconds() -> float:
+    """Return how many seconds since this Windows session booted.
 
-    Returns True if all helper images were confirmed absent by the time
-    we returned. Callers can log the result but should NOT gate startup
-    on it — if a zombie survives, Ghost's single-instance mutex check
-    will still detect and recover.
-
-    Idempotent and safe to call multiple times. Total cost: ~1.5s typical,
-    ~4s worst-case when retry-budget is exhausted on stubborn zombies.
+    Used to detect "cold boot" state — when the OS has been up only a few
+    seconds, disk + CPU are saturated by Windows's own startup storm
+    (Teams, Outlook, Defender scans, Edge preloads, etc.) and WebView2
+    cold-init competes with all that. Returns 0.0 if we can't query.
     """
-    all_gone = _kill_webview2_helpers()
-    if not all_gone:
-        log.warning(
-            "preflight: retry budget exhausted — one or more WebView2 helpers "
-            "may still be alive; proceeding with cache sweep anyway"
-        )
+    try:
+        import ctypes
+        # GetTickCount64 returns ms since boot; wraps at ~584 million years.
+        ms = ctypes.windll.kernel32.GetTickCount64()
+        return ms / 1000.0
+    except Exception:
+        return 0.0
 
-    # Final 600ms settle — even after taskkill reports "not found", Windows
-    # can take an additional ~100-300ms to finalize the ImageTeardown and
-    # release file handles from the process's mapped DLLs.
-    time.sleep(0.6)
+
+def _warm_webview_cache() -> None:
+    """Read all files in ~/.ghost/webview-cache into the OS page cache.
+
+    On cold boot, WebView2's UserDataFolder is NOT in memory — the runtime
+    pays a full disk-read tax during init. By `stat`+`open` the files up
+    front (before pywebview starts), we pull them into Windows's page
+    cache so WebView2's subsequent reads hit RAM instead of the disk.
+
+    This shaves several seconds off cold-boot startup empirically.
+
+    Non-fatal: if the cache dir doesn't exist (fresh install) or we can't
+    read it, we just skip. The webview works fine without pre-warming.
+    """
+    from ...infra.paths import WEBVIEW_CACHE
+    if not WEBVIEW_CACHE.exists():
+        return
+    try:
+        count = 0
+        total_bytes = 0
+        # Walk only the first 2 levels of the cache — deeper levels tend
+        # to be binary shader caches that webview2 reads lazily on demand.
+        # Limit to 200 files / 50MB total so we don't waste time/RAM on
+        # a cache that has grown beyond reasonable bounds.
+        for root, dirs, files in os.walk(WEBVIEW_CACHE):
+            depth = len(Path(root).relative_to(WEBVIEW_CACHE).parts)
+            if depth > 2:
+                dirs[:] = []
+                continue
+            for f in files:
+                fp = os.path.join(root, f)
+                try:
+                    sz = os.path.getsize(fp)
+                    if sz > 10 * 1024 * 1024:  # skip huge individual files
+                        continue
+                    with open(fp, "rb") as fh:
+                        # Read in 64KB chunks — this pulls pages into the
+                        # Windows file-cache without holding them in our
+                        # process heap after the function returns.
+                        while fh.read(65536):
+                            pass
+                    count += 1
+                    total_bytes += sz
+                    if count >= 200 or total_bytes >= 50 * 1024 * 1024:
+                        return
+                except OSError:
+                    continue
+        if count:
+            log.info("preflight: warmed %d cache files (%d KB)",
+                     count, total_bytes // 1024)
+    except Exception as e:
+        log.warning("preflight: cache warm failed (non-fatal): %s", e)
+
+
+def cleanup_webview2_state() -> bool:
+    """Run full preflight: kill zombies, wait for OS, sweep orphan caches,
+    warm the webview-cache page-cache on cold boot.
+
+    Total cost budget: ~2s typical, ~3s cold boot (cache warming + extra
+    settle). Previous versions (v1.1.17) could hit 9+ seconds due to
+    aggressive retry loops during the OS startup storm.
+
+    Returns True if the kill pass completed (always True in current impl;
+    callers log the result but don't gate on it).
+    """
+    uptime = _system_uptime_seconds()
+    cold_boot = uptime > 0 and uptime < 120  # booted <2min ago
+
+    if cold_boot:
+        log.info("preflight: cold boot detected (uptime=%.1fs) — warming cache first", uptime)
+        # Warm BEFORE kill — the cache is what Ghost will need after
+        # webview.start(), regardless of what other apps are doing.
+        _warm_webview_cache()
+
+    all_gone = _kill_webview2_helpers()
+
+    # Settle: 600ms normally so the OS releases file handles from killed
+    # helpers. On cold boot we want a little more to let the boot storm
+    # subside — but not much more, since excessive delay degrades UX.
+    time.sleep(0.8 if cold_boot else 0.6)
 
     try:
         _sweep_orphan_cache_dirs()
