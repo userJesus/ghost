@@ -24,6 +24,17 @@
 .btn-icon:active { background: var(--layer-1); }
 .btn-icon svg { width: 14px; height: 14px; }
 
+/* Modal close button — Windows 11 Fluent close pattern (thin X + red hover). */
+.btn-icon.btn-close svg { width: 12px; height: 12px; }
+.btn-icon.btn-close:hover {
+    background: #c42b1c;
+    color: #fff;
+}
+.btn-icon.btn-close:active {
+    background: #b23b2e;
+    color: rgba(255, 255, 255, 0.7);
+}
+
 /* Windows 11 titlebar buttons (46x32 padrão Fluent) */
 .btn-titlebar {
     width: 46px;

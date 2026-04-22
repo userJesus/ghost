@@ -13,12 +13,12 @@
          Load order here MUST match the cascade of the original file — do not
          reorder. Each file in web/css/ is byte-identical to its line range
          in the old style.css. See the header comment in each file. -->
-    <link rel="stylesheet" href="css/01-base-and-header.css?v=1.1.16">
-    <link rel="stylesheet" href="css/02-chat.css?v=1.1.16">
-    <link rel="stylesheet" href="css/03-composer-and-meeting.css?v=1.1.16">
-    <link rel="stylesheet" href="css/04-modals.css?v=1.1.16">
-    <link rel="stylesheet" href="css/05-misc.css?v=1.1.16">
-    <link rel="stylesheet" href="pixel-ghost.css?v=1.1.16">
+    <link rel="stylesheet" href="css/01-base-and-header.css?v=1.1.23">
+    <link rel="stylesheet" href="css/02-chat.css?v=1.1.23">
+    <link rel="stylesheet" href="css/03-composer-and-meeting.css?v=1.1.23">
+    <link rel="stylesheet" href="css/04-modals.css?v=1.1.23">
+    <link rel="stylesheet" href="css/05-misc.css?v=1.1.23">
+    <link rel="stylesheet" href="pixel-ghost.css?v=1.1.23">
     <script defer src="vendor/alpine.min.js"></script>
     <script src="vendor/marked.min.js"></script>
     <!-- Shared helpers (escapeHTML, stripMarkdown, tooltip manager, TTS voice picker).
@@ -203,48 +203,6 @@
             </div>
         </div>
     </header>
-
-    <!-- UPDATE BANNER (visible when a newer GitHub release is available) -->
-    <div class="update-banner"
-         x-show="updateInfo.hasUpdate && !updateBannerDismissed"
-         x-cloak>
-        <svg viewBox="0 0 14 14" fill="none" class="update-banner-icon">
-            <path d="M7 1.5v7M4 5.5l3-3 3 3M2.5 11.5h9" stroke="currentColor" stroke-width="1.4"
-                  stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-        <span class="update-banner-text" x-show="!updateDownloading">
-            Nova versão disponível:
-            <strong x-text="updateInfo.latest"></strong>
-            <span class="update-banner-sub" x-text="'(você está na ' + updateInfo.current + ')'"></span>
-        </span>
-        <!-- During auto-download: show progress bar instead of static text -->
-        <div class="update-banner-progress" x-show="updateDownloading" x-cloak>
-            <div class="update-banner-progress-label">
-                Baixando <strong x-text="updateInfo.latest"></strong>
-                · <span x-text="updateProgress + '%'"></span>
-            </div>
-            <div class="update-banner-progress-track">
-                <div class="update-banner-progress-fill"
-                     :style="'width: ' + updateProgress + '%'"></div>
-            </div>
-        </div>
-        <button class="update-banner-btn"
-                x-show="!updateDownloading"
-                @click="installUpdate()">Atualizar agora</button>
-        <button class="update-banner-btn-secondary"
-                x-show="!updateDownloading"
-                @click="openReleasePage()"
-                data-tooltip-pos="below"
-                data-tooltip="Ver página no GitHub">↗</button>
-        <button class="update-banner-close"
-                x-show="!updateDownloading"
-                @click="updateBannerDismissed = true"
-                aria-label="Dispensar">
-            <svg viewBox="0 0 12 12" fill="none">
-                <path d="M3 3l6 6M9 3l-6 6" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
-            </svg>
-        </button>
-    </div>
 
     <!-- CHAT -->
     <main class="chat" x-ref="chatScroll">
@@ -613,6 +571,50 @@
         </div>
 
     </section>
+
+    <!-- UPDATE BANNER (visible when a newer GitHub release is available) -->
+    <!-- Pinned to the bottom (below the composer) to avoid overlapping the
+         titlebar controls in maximized mode. -->
+    <div class="update-banner"
+         x-show="updateInfo.hasUpdate && !updateBannerDismissed"
+         x-cloak>
+        <svg viewBox="0 0 14 14" fill="none" class="update-banner-icon">
+            <path d="M7 1.5v7M4 5.5l3-3 3 3M2.5 11.5h9" stroke="currentColor" stroke-width="1.4"
+                  stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span class="update-banner-text" x-show="!updateDownloading">
+            Nova versão disponível:
+            <strong x-text="updateInfo.latest"></strong>
+            <span class="update-banner-sub" x-text="'(você está na ' + updateInfo.current + ')'"></span>
+        </span>
+        <!-- During auto-download: show progress bar instead of static text -->
+        <div class="update-banner-progress" x-show="updateDownloading" x-cloak>
+            <div class="update-banner-progress-label">
+                Baixando <strong x-text="updateInfo.latest"></strong>
+                · <span x-text="updateProgress + '%'"></span>
+            </div>
+            <div class="update-banner-progress-track">
+                <div class="update-banner-progress-fill"
+                     :style="'width: ' + updateProgress + '%'"></div>
+            </div>
+        </div>
+        <button class="update-banner-btn"
+                x-show="!updateDownloading"
+                @click="installUpdate()">Atualizar agora</button>
+        <button class="update-banner-btn-secondary"
+                x-show="!updateDownloading"
+                @click="openReleasePage()"
+                data-tooltip-pos="below"
+                data-tooltip="Ver página no GitHub">↗</button>
+        <button class="update-banner-close"
+                x-show="!updateDownloading"
+                @click="updateBannerDismissed = true"
+                aria-label="Dispensar">
+            <svg viewBox="0 0 12 12" fill="none">
+                <path d="M3 3l6 6M9 3l-6 6" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+            </svg>
+        </button>
+    </div>
 
 </div>
 

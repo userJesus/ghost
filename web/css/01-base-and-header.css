@@ -435,14 +435,18 @@ input, textarea, button, select {
 /* .brand::before substituído por um <span class="brand-dot pixel-ghost-mini">
    no HTML (fantasminha animado em vez do quadradinho verde) */
 
-/* Update banner — shown below the header when GitHub has a newer release. */
+/* Update banner — shown when GitHub has a newer release.
+   In compact mode it is pinned to the top of the window (see .app.compact below).
+   In window/maximized modes it sits at the BOTTOM of the shell (below the
+   composer) to avoid overlapping the titlebar controls (minimize/close/dock)
+   when the window is maximized. */
 .update-banner {
     display: flex;
     align-items: center;
     gap: 8px;
     padding: 6px 10px;
     background: linear-gradient(90deg, rgba(97, 219, 180, 0.12), rgba(60, 184, 149, 0.12));
-    border-bottom: 1px solid rgba(97, 219, 180, 0.28);
+    border-top: 1px solid rgba(97, 219, 180, 0.28);
     color: var(--text-primary);
     font-size: 11.5px;
     flex-shrink: 0;
@@ -491,6 +495,7 @@ input, textarea, button, select {
     z-index: 1000;
     padding: 4px 8px;
     font-size: 11px;
+    border-top: none;
     border-bottom: 1px solid rgba(97, 219, 180, 0.4);
     background: linear-gradient(90deg, rgba(97, 219, 180, 0.18), rgba(60, 184, 149, 0.15));
 }
