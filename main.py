@@ -481,6 +481,16 @@ def main():
     # Startup log marker so we can tell apart sessions in ghost.log
     _slog(f"=== Ghost starting (pid={os.getpid()}, frozen={getattr(sys, 'frozen', False)}) ===")
 
+    # (0) Single-instance guard — MUST run before the preflight cleanup.
+    # If a Ghost is already open and the user double-launches the .exe, the
+    # preflight below would taskkill every msedgewebview2.exe globally,
+    # orphaning the running instance's webview and triggering "Ghost.exe não
+    # está respondendo" on the existing window. Checking the mutex first lets
+    # the duplicate launch exit cleanly (after signaling the running Ghost to
+    # show itself) without touching shared process state. Mac: NSApplication
+    # handles double-launch by default.
+    _ensure_single_instance_windows()
+
     # (1) Clean up zombie WebView2 helpers from previous crashes/closes BEFORE
     # we touch webview.* — this is the main fix for "crashes on reopen, need to
     # reinstall" reports. Reinstalling was just buying time for the OS to
@@ -509,11 +519,6 @@ def main():
             "Depois, abra o Ghost novamente.",
         )
         sys.exit(1)
-
-    # Single-instance guard — exits if another Ghost is already running and
-    # signals it to show itself. Mac: NSApplication handles double-launch by
-    # default (brings existing instance to front).
-    _ensure_single_instance_windows()
 
     # Redirect stderr to a log file so crashes are captured even under pythonw.
     # We append now (not truncate) to preserve the startup log we wrote above.
