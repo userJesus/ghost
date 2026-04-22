@@ -1,0 +1,167 @@
+<!-- ===================================================
+     Help modal
+     Loaded dynamically into #modals-root by app.js init().
+     Alpine bindings are activated via Alpine.initTree().
+
+     ⚠️ MANUTENÇÃO:
+     Este modal é o manual de uso do Ghost. Sempre que uma
+     feature nova for adicionada OU o comportamento de uma
+     feature existente mudar, atualize as seções abaixo para
+     refletir a realidade atual do app. Regra lembrada em
+     CLAUDE.md.
+     ===================================================
+-->
+<div class="modal-backdrop" x-show="helpModalOpen" x-transition
+     @click.self="helpModalOpen = false"
+     @keydown.escape.window="helpModalOpen = false" x-cloak>
+    <div class="modal help-modal">
+        <div class="modal-header">
+            <h2>
+                <svg viewBox="0 0 16 16" fill="none" style="width:16px;height:16px;display:inline;vertical-align:-3px;margin-right:6px;">
+                    <circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-width="1.2"/>
+                    <path d="M6.3 6.3a1.7 1.7 0 013.4 0c0 1.2-1.7 1.3-1.7 2.5M8 11.3v.1" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+                </svg>
+                Ajuda — como usar o Ghost
+            </h2>
+            <button class="btn-icon" @click="helpModalOpen = false">
+                <svg viewBox="0 0 14 14" fill="none"><path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+            </button>
+        </div>
+
+        <div class="modal-body">
+            <p class="help-intro">
+                Bem-vindo ao Ghost. É um assistente de IA que fica sempre por cima das outras janelas, não
+                aparece em gravações de tela ou screen-share, e responde sobre o que você está vendo.
+                Abaixo tem um passo-a-passo das features principais.
+            </p>
+
+            <!-- ============ Primeiros passos ============ -->
+            <div class="help-group">
+                <div class="help-group-title">
+                    <span class="help-group-icon">🚀</span>
+                    Primeiros passos
+                </div>
+                <ol class="help-steps">
+                    <li>Abra as <strong>Configurações</strong> (ícone de engrenagem no topo) e cole sua chave da
+                        OpenAI. É onde as perguntas vão ser processadas. Gere uma gratuitamente em
+                        <a href="#" @click.prevent="openUrl('https://platform.openai.com/api-keys')">platform.openai.com/api-keys</a>.
+                        Você paga por token apenas pelo que usar (~$0.0001 por pergunta).</li>
+                    <li>Escolha o modelo (GPT-4o recomendado pra qualidade; GPT-4o-mini pra custo mínimo).</li>
+                    <li>Digite uma pergunta no campo de baixo e aperte <kbd>Enter</kbd>. Pronto.</li>
+                </ol>
+            </div>
+
+            <!-- ============ Modos da janela ============ -->
+            <div class="help-group">
+                <div class="help-group-title">
+                    <span class="help-group-icon">🪟</span>
+                    Modos da janela
+                </div>
+                <ul class="help-list">
+                    <li><strong>Tela cheia</strong> (padrão ao abrir) — Ghost ocupa toda a área útil do monitor. O painel lateral com as ferramentas fica visível à esquerda.</li>
+                    <li><strong>Janela</strong> — clique no botão de minimizar (—) no topo-direito. Ghost vira uma janela de 580×720 que você pode arrastar por qualquer lugar.</li>
+                    <li><strong>Canto</strong> — clique no ícone de "encolher pro canto" (→|). Ghost vira um ícone de 56×56 grudado na borda direita do monitor. Clique no ícone pra restaurar.</li>
+                    <li>Em qualquer modo, <kbd>Ctrl</kbd><span class="kbd-plus">+</span><kbd>Shift</kbd><span class="kbd-plus">+</span><kbd>G</kbd> mostra/esconde o Ghost globalmente, de qualquer app.</li>
+                </ul>
+            </div>
+
+            <!-- ============ Chat ============ -->
+            <div class="help-group">
+                <div class="help-group-title">
+                    <span class="help-group-icon">💬</span>
+                    Chat e perguntas
+                </div>
+                <ul class="help-list">
+                    <li>Digite no campo inferior, aperte <kbd>Enter</kbd> pra enviar. A resposta aparece em streaming (token por token).</li>
+                    <li><strong>Selecionar trecho</strong> — clique no botão de texto abaixo da resposta pra copiar só um pedaço (<kbd>Ctrl</kbd><span class="kbd-plus">+</span><kbd>C</kbd>).</li>
+                    <li><strong>Ler em voz alta</strong> — botão de áudio abaixo da resposta. Pode ativar o <em>Auto-speak</em> na barra lateral pra ler toda resposta automaticamente.</li>
+                    <li><strong>Nova conversa</strong> — botão "+" na lateral. Conversas antigas ficam salvas em <em>Histórico</em>.</li>
+                    <li><strong>Histórico</strong> — clique no ícone de relógio na lateral. Mostra todas as conversas anteriores, permite retomar, renomear, apagar.</li>
+                </ul>
+            </div>
+
+            <!-- ============ Captura de tela ============ -->
+            <div class="help-group">
+                <div class="help-group-title">
+                    <span class="help-group-icon">📷</span>
+                    Capturar a tela
+                </div>
+                <ul class="help-list">
+                    <li><strong>Olhar tela</strong> — ativa o modo "watch". Ghost captura periodicamente o que aparece no monitor que NÃO é ele, e usa como contexto ao responder. Útil pra perguntar "o que é isso aí na tela?".</li>
+                    <li><strong>Capturar região</strong> — botão de câmera no composer. Abre seletor pra desenhar o retângulo que quer capturar. Após selecionar, a imagem fica anexada à próxima pergunta.</li>
+                    <li><strong>Arrastar arquivo</strong> — arraste imagem, PDF ou texto pra dentro do Ghost. O conteúdo vira contexto da próxima pergunta.</li>
+                    <li><strong>Privacidade</strong> — o Ghost aplica <code>WDA_EXCLUDEFROMCAPTURE</code> na própria janela, então screen-share, gravações OBS/Teams/Meet, e screenshots NÃO capturam a janela do Ghost (aparece preta ou sumida nos casos em que o sistema aceita o flag).</li>
+                </ul>
+            </div>
+
+            <!-- ============ Reuniões ============ -->
+            <div class="help-group">
+                <div class="help-group-title">
+                    <span class="help-group-icon">🎙</span>
+                    Gravar reunião
+                </div>
+                <ul class="help-list">
+                    <li>Clique em <strong>Reunião</strong> na lateral. Escolha qual janela ou monitor quer capturar em vídeo + áudio.</li>
+                    <li>Durante a gravação, Ghost captura áudio do sistema (tudo que toca no alto-falante) + microfone em paralelo, mais screenshots periódicos.</li>
+                    <li>Você pode fazer perguntas <strong>ao vivo</strong> no chat enquanto a reunião rola — Ghost usa a transcrição parcial como contexto.</li>
+                    <li>Ao parar, o Ghost transcreve tudo com Whisper, resume com GPT, e salva um <strong>.md com sumário + transcrição + vídeo + áudio</strong> na pasta <code>~/Documents/Ghost Meetings/</code>.</li>
+                </ul>
+            </div>
+
+            <!-- ============ Clonar site ============ -->
+            <div class="help-group">
+                <div class="help-group-title">
+                    <span class="help-group-icon">🔗</span>
+                    Clonar uma página web
+                </div>
+                <ul class="help-list">
+                    <li>Botão <strong>Clonar</strong> na lateral. Cole uma URL, o Ghost baixa a página completa (HTML + CSS + imagens + JS) pra uso offline.</li>
+                    <li>O resultado fica numa pasta em <code>~/Documents/Ghost Clones/</code> com um <code>index.html</code> pronto pra abrir.</li>
+                    <li>Útil pra preservar páginas que podem sumir / virar paywall / pra fazer perguntas sobre a página inteira sem depender de internet depois.</li>
+                </ul>
+            </div>
+
+            <!-- ============ Segurança e privacidade ============ -->
+            <div class="help-group">
+                <div class="help-group-title">
+                    <span class="help-group-icon">🔒</span>
+                    Segurança e privacidade
+                </div>
+                <ul class="help-list">
+                    <li><strong>Detecção de dados sensíveis</strong> — antes de mandar uma pergunta que contém CPF, CNPJ, cartão de crédito, email ou telefone, o Ghost mostra um aviso. Você decide se envia mesmo assim.</li>
+                    <li><strong>Não sai da sua máquina</strong> — histórico, configuração e cache ficam em <code>~/.ghost/</code>. Nada é enviado pra servidores do Ghost (porque não existe). Só a pergunta em si vai pra OpenAI.</li>
+                    <li><strong>Invisível em gravações</strong> — via <code>WDA_EXCLUDEFROMCAPTURE</code>. Teste antes em uma chamada real pra confirmar (alguns drivers de captura ignoram o flag).</li>
+                </ul>
+            </div>
+
+            <!-- ============ Atalhos rápidos ============ -->
+            <div class="help-group">
+                <div class="help-group-title">
+                    <span class="help-group-icon">⌨</span>
+                    Atalhos rápidos
+                </div>
+                <p class="help-hint">Os principais:</p>
+                <div class="help-shortcut-row">
+                    <div class="help-shortcut-keys"><kbd>Ctrl</kbd><span class="kbd-plus">+</span><kbd>Shift</kbd><span class="kbd-plus">+</span><kbd>G</kbd></div>
+                    <div class="help-shortcut-desc">Mostrar / esconder o Ghost (de qualquer app)</div>
+                </div>
+                <div class="help-shortcut-row">
+                    <div class="help-shortcut-keys"><kbd>Enter</kbd></div>
+                    <div class="help-shortcut-desc">Enviar pergunta no chat</div>
+                </div>
+                <div class="help-shortcut-row">
+                    <div class="help-shortcut-keys"><kbd>Esc</kbd></div>
+                    <div class="help-shortcut-desc">Fechar modal aberto / cancelar captura de área</div>
+                </div>
+                <p class="help-hint">
+                    Lista completa: botão <strong>Atalhos</strong> (ícone de teclado) na lateral.
+                </p>
+            </div>
+
+            <p class="help-footnote">
+                Dúvidas, bugs ou sugestões? Abre uma issue em
+                <a href="#" @click.prevent="openUrl(appInfo.repoUrl + '/issues')">github.com/userJesus/ghost/issues</a>.
+            </p>
+        </div>
+    </div>
+</div>

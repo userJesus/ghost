@@ -363,5 +363,115 @@
     transform: translateY(0);
 }
 
+/* ============ Social links (autor) — bottom-left, maximized only ============ */
+.social-links {
+    position: fixed;
+    bottom: 14px;
+    left: 14px;
+    display: flex;
+    gap: 6px;
+    z-index: 40;
+    pointer-events: auto;
+}
+.social-btn {
+    width: 32px;
+    height: 32px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    background: var(--layer-1);
+    color: var(--text-tertiary);
+    border: 1px solid var(--stroke-default);
+    transition: background 0.12s, color 0.12s, border-color 0.12s, transform 0.1s;
+    text-decoration: none;
+    cursor: pointer;
+}
+.social-btn:hover {
+    background: var(--layer-2);
+    color: var(--accent);
+    border-color: rgba(97, 219, 180, 0.4);
+}
+.social-btn:active { transform: scale(0.94); }
+.social-btn svg {
+    width: 16px;
+    height: 16px;
+    display: block;
+}
+
+/* ============ Help modal ============ */
+.help-modal { width: min(620px, calc(100% - 32px)); }
+.help-intro {
+    font-size: 12.5px;
+    color: var(--text-secondary);
+    line-height: 1.55;
+    margin: 4px 0 18px;
+    padding: 10px 12px;
+    background: var(--layer-1);
+    border: 1px solid var(--stroke-subtle);
+    border-radius: 6px;
+}
+.help-group {
+    margin-bottom: 18px;
+}
+.help-group-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 8px;
+    padding-bottom: 6px;
+    border-bottom: 1px dashed var(--stroke-subtle);
+}
+.help-group-icon { font-size: 15px; }
+.help-list, .help-steps {
+    margin: 0;
+    padding-left: 22px;
+    color: var(--text-secondary);
+    font-size: 12.5px;
+    line-height: 1.65;
+}
+.help-list li, .help-steps li { margin-bottom: 6px; }
+.help-list code, .help-steps code {
+    font-family: 'JetBrains Mono', Consolas, monospace;
+    font-size: 11.5px;
+    padding: 1px 5px;
+    background: var(--layer-1);
+    border: 1px solid var(--stroke-subtle);
+    border-radius: 3px;
+    color: var(--text-primary);
+}
+.help-list strong, .help-steps strong { color: var(--text-primary); }
+.help-hint {
+    font-size: 12px;
+    color: var(--text-tertiary);
+    margin: 4px 0 10px;
+}
+.help-shortcut-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 6px 0;
+    font-size: 12.5px;
+}
+.help-shortcut-keys {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 160px;
+}
+.help-shortcut-desc { color: var(--text-secondary); }
+.help-footnote {
+    margin-top: 18px;
+    padding-top: 10px;
+    border-top: 1px solid var(--stroke-subtle);
+    font-size: 11.5px;
+    color: var(--text-tertiary);
+    text-align: center;
+}
+.help-footnote a { color: var(--accent); }
+
 /* Hidden until needed */
 [x-cloak] { display: none !important; }

@@ -62,6 +62,7 @@ function ghostApp() {
         selectModeIdx: -1,          // idx da msg em modo de seleção ativo
         modelSaveMsg: '',           // msg de confirmação ao trocar modelo
         shortcutsModalOpen: false,  // modal de atalhos do sistema
+        helpModalOpen: false,       // modal de ajuda (manual de uso)
         closeConfirmOpen: false,    // modal de confirmação ao clicar X
         // ===== Clonagem de página web =====
         cloneModalOpen: false,
@@ -1279,6 +1280,7 @@ function ghostApp() {
             const files = [
                 'partials/settings.html',
                 'partials/shortcuts.html',
+                'partials/help.html',
                 'partials/history.html',
                 'partials/sensitive.html',
                 'partials/close-confirm.html',
