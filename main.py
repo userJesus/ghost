@@ -101,35 +101,109 @@ def _find_own_top_window() -> int:
 
 def _apply_window_tweaks(api: GhostAPI, init_x: int = 100, init_y: int = 100,
                          init_w: int = 580, init_h: int = 720):
-    """Poll for our window's HWND until found (up to 10s).
+    """Poll for our window's HWND until found (up to 10s), then apply style
+    tweaks. The blocking ones are dispatched to a throwaway thread so the
+    pump-stall they cause doesn't freeze our progression.
 
-    The win32 calls here (hide_from_capture / hide_from_taskbar /
-    make_non_activating) all touch the window's style, and we run in a
-    background thread. Since 1.1.8 `hide_from_taskbar` uses SWP_ASYNCWINDOWPOS
-    so its SetWindowPos doesn't block waiting for WebView2's UI thread to
-    drain — earlier versions could freeze the entire init chain at
-    `hide_from_capture=True` when WebView2 was cold-initializing on a
-    resource-contended system, because the next SetWindowPos was sent
-    synchronously and never returned until the UI thread was free. The
-    ASYNC flag makes that post-and-return."""
+    Why the split:
+      * `hide_from_capture` calls `SetWindowDisplayAffinity`, which does
+        NOT send window messages — it's a pure attribute set. Safe to call
+        inline regardless of pump state.
+      * `hide_from_taskbar` and `make_non_activating` both call
+        `SetWindowLong`, which SYNCHRONOUSLY sends WM_STYLECHANGING and
+        WM_STYLECHANGED to the window's owning thread. If that thread is
+        saturated by WebView2 cold init (3–30s on fresh install, cold
+        boot, or post-auto-update), our background thread BLOCKS on
+        SendMessage until the pump drains. The comment at SWP_ASYNCWINDOWPOS
+        claimed this was fixed in 1.1.8, but it was wrong: ASYNC only
+        affects WM_WINDOWPOSCHANGED, not the style-change messages, and
+        local tests confirmed `hide_from_taskbar` hanging ≥30s during
+        cold init. That hang was the actual cause of users seeing the
+        "(Não Respondendo)" overlay with click-to-get-dialog behaviour
+        described in prior reports — NOT the pump being unresponsive on
+        its own, but OUR calls piling synchronous work onto a thread that
+        was already busy.
+      * `_apply_response_popup_tweaks` internally calls hide_from_taskbar
+        on two popups, so it has the same hazard and gets deferred too.
+
+    The deferred thread is daemon + fire-and-forget: it'll eventually
+    complete once the window pump is alive (usually within 5s of webview
+    cold init finishing). Visible consequence: Ghost briefly shows in the
+    taskbar + can take focus during that window. That's a cosmetic
+    regression vs the pre-1.1.26 blocking behaviour, which is worth it to
+    stop the freeze."""
+    hwnd = 0
+    attempt = 0
     for attempt in range(50):
         time.sleep(0.2)
         hwnd = _find_own_top_window()
         if hwnd:
-            api.set_hwnd(hwnd)
-            print(f"[init] HWND={hwnd} (after {attempt + 1} attempts)", flush=True)
-            print(f"[init] hide_from_capture={hide_from_capture(hwnd, True)}", flush=True)
-            print(f"[init] hide_from_taskbar={hide_from_taskbar(hwnd)}", flush=True)
-            try:
-                make_non_activating(hwnd)
-                print("[init] NOACTIVATE applied (permanent)", flush=True)
-            except Exception as e:
-                print(f"[init] NOACTIVATE failed: {e}", flush=True)
+            break
+
+    if not hwnd:
+        print("[warn] HWND not found after 10s polling", flush=True)
+        return
+
+    api.set_hwnd(hwnd)
+    print(f"[init] HWND={hwnd} (after {attempt + 1} attempts)", flush=True)
+
+    # Safe inline: SetWindowDisplayAffinity doesn't send window messages.
+    try:
+        print(f"[init] hide_from_capture={hide_from_capture(hwnd, True)}", flush=True)
+    except Exception as e:
+        print(f"[init] hide_from_capture failed: {e}", flush=True)
+
+    # Defer EVERYTHING else. Even spawning threads / pynput listener on
+    # the main tweaks thread has been observed to stall for 20+ seconds
+    # during WebView2 cold init on subsequent relaunches — probably
+    # because the main Python thread (running webview.start() → native
+    # WebView2 code) holds the GIL in long bursts while the runtime
+    # initializes, and our tweaks thread can't acquire it. By dumping
+    # all subsequent work into ONE deferred daemon thread and returning
+    # the main tweaks thread immediately, we stop participating in the
+    # GIL contention: the deferred thread will eventually run when the
+    # pump settles, and if it never does, it dies with the process.
+    def _deferred_blocking_tweaks():
+        print("[init] deferred tweaks thread started", flush=True)
+        # Hotkey FIRST — it doesn't depend on the window's message pump
+        # (pynput installs a global keyboard hook from its own listener
+        # thread), so it completes in <100ms even when the pump is cold.
+        # The hotkey is also what users actually need to interact with
+        # Ghost, so getting it registered fast matters more than the
+        # cosmetic taskbar/noactivate styles that follow.
+        try:
             _register_global_hotkey(hwnd)
-            # Also find the response popup HWND and protect it
+        except Exception as e:
+            print(f"[init] hotkey register (deferred) failed: {e}", flush=True)
+        # THEN the blocking Win32 calls. Each one sends WM_STYLECHANGING/
+        # WM_STYLECHANGED/WM_NCCALCSIZE synchronously to the window's
+        # thread, which can still be saturated by WebView2 cold init for
+        # 10–30s. If they hang here, the cosmetic effect is: Ghost stays
+        # in the taskbar and can take focus for that window. The hotkey
+        # (above) and the main Ghost UI (driven by webview.start() on
+        # the main thread) are already live, so the user isn't blocked —
+        # only the taskbar/noactivate/popup cosmetics lag behind.
+        try:
+            r = hide_from_taskbar(hwnd)
+            print(f"[init] hide_from_taskbar (deferred)={r}", flush=True)
+        except Exception as e:
+            print(f"[init] hide_from_taskbar (deferred) failed: {e}", flush=True)
+        try:
+            make_non_activating(hwnd)
+            print("[init] NOACTIVATE (deferred) applied", flush=True)
+        except Exception as e:
+            print(f"[init] NOACTIVATE (deferred) failed: {e}", flush=True)
+        try:
             _apply_response_popup_tweaks(api)
-            return
-    print("[warn] HWND not found after 10s polling", flush=True)
+        except Exception as e:
+            print(f"[warn] popup tweak (deferred) error: {e}", flush=True)
+
+    threading.Thread(
+        target=_deferred_blocking_tweaks,
+        daemon=True,
+        name="ghost-deferred-tweaks",
+    ).start()
+    print("[init] tweaks thread returning (deferred work spawned)", flush=True)
 
 
 def _apply_response_popup_tweaks(api: GhostAPI):
