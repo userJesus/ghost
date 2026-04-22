@@ -5,6 +5,9 @@
    Loading order in index.html is preserved so CSS cascade
    resolution matches the pre-split behavior byte-for-byte.
    ============================================================ */
+
+/* Header action icon button (Settings) */
+.btn-icon {
     width: 32px;
     height: 28px;
     border-radius: 4px;
@@ -23,17 +26,6 @@
 }
 .btn-icon:active { background: var(--layer-1); }
 .btn-icon svg { width: 14px; height: 14px; }
-
-/* Modal close button — Windows 11 Fluent close pattern (thin X + red hover). */
-.btn-icon.btn-close svg { width: 12px; height: 12px; }
-.btn-icon.btn-close:hover {
-    background: #c42b1c;
-    color: #fff;
-}
-.btn-icon.btn-close:active {
-    background: #b23b2e;
-    color: rgba(255, 255, 255, 0.7);
-}
 
 /* Windows 11 titlebar buttons (46x32 padrão Fluent) */
 .btn-titlebar {

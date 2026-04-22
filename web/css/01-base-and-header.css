@@ -967,6 +967,3 @@ input, textarea, button, select {
 .app.maximized .empty-state {
     min-height: 100%;
 }
-
-/* Header action icon button (Settings) */
-.btn-icon {
