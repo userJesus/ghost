@@ -96,11 +96,17 @@ Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExeName}"; Tasks: deskto
 Name: "{userstartup}\{#AppName}"; Filename: "{app}\{#AppExeName}"; Tasks: startupicon
 
 [Run]
-; Normal install: the "Launch Ghost" checkbox appears on the Finished page.
+; Normal (visible) install: the "Launch Ghost" checkbox appears on the
+; Finished page — user decides whether to launch.
 Filename: "{app}\{#AppExeName}"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall skipifsilent
-; Silent install (used by the in-app auto-updater): always relaunch Ghost so
-; the user isn't left staring at a closed app after an update.
-Filename: "{app}\{#AppExeName}"; Flags: nowait runasoriginaluser; Check: WizardSilent
+;
+; NOTE: silent install launch is NOT here. Pre-v1.1.21 used
+;   Filename: "{app}\..."; Flags: nowait runasoriginaluser; Check: WizardSilent
+; but in practice that entry silently skipped on at least one machine.
+; Launch during silent install is now done programmatically in the
+; [Code] section via `CurStepChanged(ssDone)` — see the block at the
+; bottom of this file. Pascal's `Exec` is unambiguous and works
+; regardless of Inno Setup's internal `[Run]` gating logic.
 
 ; ============================================================
 ;  [Code] — Pascal Script for robust process cleanup + UX messaging.
@@ -145,6 +151,30 @@ const
 // says otherwise.)
 var
   ExistingInstallDetected: Boolean;
+
+
+// ------------------------------------------------------------------
+// Write a timestamped line to ~/.ghost/install-launch.log so
+// post-mortem ("installer ran but Ghost never opened") has evidence.
+// Uses Win32 API via a temp shell command because Inno Pascal's file
+// I/O is limited. Best-effort — any failure is swallowed silently.
+// ------------------------------------------------------------------
+procedure WriteDebugLog(const Msg: String);
+var
+  LogPath: String;
+  Line: AnsiString;
+  F: Integer;
+begin
+  try
+    LogPath := ExpandConstant('{userprofile}') + '\.ghost\install-launch.log';
+    // Use Inno's FileAppend via `SaveStringToFile` (append=True)
+    Line := AnsiString('[' + GetDateTimeString('yyyy-mm-dd hh:nn:ss', '-', ':') +
+                       '] ' + Msg + #13#10);
+    SaveStringToFile(LogPath, Line, True);
+  except
+    // logging failure is non-fatal, don't surface it
+  end;
+end;
 
 // ------------------------------------------------------------------
 // Tries to terminate every process matching ImageName (force + tree).
@@ -340,6 +370,9 @@ end;
 // Phase 2 & 3: mid-install wizard status + post-extract cleanup.
 // ------------------------------------------------------------------
 procedure CurStepChanged(CurStep: TSetupStep);
+var
+  GhostExe: String;
+  ResultCode: Integer;
 begin
   if CurStep = ssInstall then
   begin
@@ -363,10 +396,68 @@ begin
     SweepOrphanWebViewCaches;
 
     // Final validation: if Ghost.exe is somehow still alive now, do one
-    // more kill pass. The [Run] entry is about to launch the NEW Ghost,
-    // and we must not race an old instance holding the single-instance
-    // mutex.
+    // more kill pass. The ssDone launch below is about to spawn the NEW
+    // Ghost, and we must not race an old instance holding the
+    // single-instance mutex.
     KillAllGhostProcesses('');
+  end
+  else if CurStep = ssDone then
+  begin
+    // ── Silent-install auto-launch ────────────────────────────────
+    // Pre-v1.1.21 this was handled by an [Run] entry gated on
+    // `Check: WizardSilent`. In practice that entry silently SKIPPED
+    // on at least one user's machine (investigated v1.1.20 install →
+    // Ghost.exe never started after installer exited). Rather than
+    // debug Inno Setup's internal launch gating, we do it ourselves
+    // here.
+    //
+    // v1.1.21 tried `Exec(...)` (CreateProcess path) but on the same
+    // user's box that ALSO didn't launch Ghost. v1.1.22 uses
+    // `ShellExec` (ShellExecuteEx path) as the primary, falling back
+    // to `Exec` — different Win32 API paths have different handling
+    // for UAC inheritance, working dirs, and process-group association,
+    // so having both available covers edge cases.
+    //
+    // Also writes a launch-attempt marker to ~/.ghost/install-launch.log
+    // so POST-MORTEM of "Ghost didn't open after install" has evidence.
+    //
+    // Visible (non-silent) installs already use the [Run] entry with
+    // `postinstall skipifsilent` flags, which surfaces a "Launch Ghost"
+    // checkbox on the Finished page. We don't duplicate that here.
+    if WizardSilent then
+    begin
+      GhostExe := ExpandConstant('{app}\{#AppExeName}');
+      WriteDebugLog('ssDone silent launch | exe=' + GhostExe +
+                    ' | exists=' + IntToStr(Ord(FileExists(GhostExe))));
+      if FileExists(GhostExe) then
+      begin
+        // Primary attempt: ShellExec ("open" verb). This is what happens
+        // when user double-clicks in Explorer — most compatible path.
+        if ShellExec('open', GhostExe, '', ExpandConstant('{app}'),
+                     SW_SHOWNORMAL, ewNoWait, ResultCode) then
+        begin
+          WriteDebugLog('ssDone launched via ShellExec, rc=' +
+                        IntToStr(ResultCode));
+        end
+        else
+        begin
+          WriteDebugLog('ssDone ShellExec FAILED (rc=' +
+                        IntToStr(ResultCode) + '); falling back to Exec');
+          // Fallback: Exec (CreateProcess path).
+          Exec(GhostExe, '', ExpandConstant('{app}'),
+               SW_SHOWNORMAL, ewNoWait, ResultCode);
+          WriteDebugLog('ssDone Exec fallback rc=' + IntToStr(ResultCode));
+        end;
+      end
+      else
+      begin
+        WriteDebugLog('ssDone SKIPPED: Ghost.exe not at ' + GhostExe);
+      end;
+    end
+    else
+    begin
+      WriteDebugLog('ssDone: WizardSilent=False, not auto-launching');
+    end;
   end;
 end;
 
