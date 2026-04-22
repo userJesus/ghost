@@ -73,22 +73,14 @@ WEB_DROPDOWN = ROOT / "web" / "dropdown.html"
 
 
 def _find_own_top_window() -> int:
-    """Find our main window's HWND by enumerating all top-level windows.
-
-    Does NOT filter by `IsWindowVisible` — since v1.1.19 we create the
-    main window with `hidden=True` and only show it after webview is
-    ready, so visibility cannot be a prerequisite for HWND discovery.
-
-    Disambiguation: we have THREE windows (main + response + dropdown)
-    with titles "Ghost", "Ghost Response", "Ghost Dropdown". We match the
-    main window by EXACT title "Ghost" (not contains) so the hidden
-    siblings don't get picked accidentally.
-    """
+    """Enumerate visible top-level windows belonging to this process, pick the best match."""
     pid = os.getpid()
     candidates: list[tuple[int, str]] = []
 
     def callback(hwnd, _):
         try:
+            if not win32gui.IsWindowVisible(hwnd):
+                return True
             _, wpid = win32process.GetWindowThreadProcessId(hwnd)
             if wpid != pid:
                 return True
@@ -101,14 +93,8 @@ def _find_own_top_window() -> int:
 
     win32gui.EnumWindows(callback, None)
 
-    # First pass: exact-match "Ghost" (the main window's title).
     for hwnd, title in candidates:
-        if title == "Ghost":
-            return hwnd
-    # Fallback: first window with "Ghost" in title. Shouldn't happen
-    # unless a future refactor changes window titles.
-    for hwnd, title in candidates:
-        if "Ghost" in title and "Response" not in title and "Dropdown" not in title:
+        if "Ghost" in title:
             return hwnd
     return candidates[0][0] if candidates else 0
 
@@ -594,14 +580,13 @@ def main():
             _slog(f"work area / DPI query failed ({e}), falling back to 720x720")
 
         _slog("creating main window (pre-sized to logical work area)")
-        # Create HIDDEN. Windows won't add "(não está respondendo)" to a
-        # window that isn't visible, so during the 3-10s it takes WebView2
-        # to cold-init, the user sees NOTHING — no frozen-looking ghost.
-        # The on_ready callback (passed to webview.start) will .show() it
-        # once the message pump is live.
-        # Also: hidden windows don't get picked up by DWM thumbnail/capture
-        # APIs, which means `WDA_EXCLUDEFROMCAPTURE` can be applied from
-        # the background thread before anything leaks into screen shares.
+        # NOTE: hidden=True attempted in v1.1.19 to suppress the Windows
+        # "não respondendo" overlay during WebView2 cold init, but it
+        # broke the normal launch path on some setups — the window
+        # wouldn't become visible even after webview was ready. Reverted
+        # to visible-from-creation in v1.1.20. Cold-boot hang mitigation
+        # now relies only on the faster preflight + cache warming, which
+        # are additive wins that don't change window visibility.
         window = webview.create_window(
             "Ghost",
             str(WEB_INDEX),
@@ -615,7 +600,6 @@ def main():
             easy_drag=False,
             on_top=True,
             resizable=True,
-            hidden=True,
             background_color="#131313",
         )
         api.set_window(window)
@@ -685,25 +669,8 @@ def main():
             _slog(f"webview storage_path = {_wv_cache}")
         except Exception as e:
             _slog(f"webview storage_path mkdir failed ({e}); pywebview will fall back to tempfile")
-        # on_ready fires on a background thread once pywebview finishes
-        # initializing the WebView2 runtime + its event loop. At that
-        # point the message pump is responsive, so revealing the window
-        # won't provoke Windows's "não está respondendo" overlay.
-        def _on_webview_ready():
-            try:
-                _slog("webview runtime ready — showing main window")
-                # Tiny pause to let the window styling (WDA_EXCLUDEFROMCAPTURE
-                # etc, applied by _apply_window_tweaks) land before the first
-                # frame paints. Without this, on some systems the main window
-                # briefly flashes visible in screen-capture before the affinity
-                # takes effect.
-                time.sleep(0.15)
-                window.show()
-            except Exception as e:
-                _slog(f"show() after ready failed: {e}")
-
         _slog("calling webview.start()")
-        webview.start(_on_webview_ready, debug=debug_mode, gui="edgechromium",
+        webview.start(debug=debug_mode, gui="edgechromium",
                       storage_path=str(_wv_cache))
         _slog("webview.start() returned (user closed Ghost)")
     except SystemExit:
