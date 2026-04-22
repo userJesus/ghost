@@ -102,8 +102,17 @@ class MeetingRecorder:
             return
         self._running = False
         self._stop_time = time.time()
-        for t in self._threads:
-            t.join(timeout=5.0)
+        # Per-thread timeouts: audio/screenshot loops exit within their
+        # sleep interval (≤500ms), so 1.5s is generous. The video loop's
+        # finally block flushes the MP4 buffer which can take 1–3s for
+        # multi-hour meetings, so we give it 3.0s. Total worst case:
+        # 4.5s + 3s = 7.5s, down from 20s (4×5s) pre-1.1.26. Threads
+        # are daemon so even if the 3s video budget expires, its
+        # finally still finishes in the background; the explicit
+        # writer.close() below is a safety net for the common case
+        # where video_loop exited before the finally ran.
+        for i, t in enumerate(self._threads):
+            t.join(timeout=3.0 if i == 3 else 1.5)
         self._threads = []
         try:
             if self._video_writer is not None:

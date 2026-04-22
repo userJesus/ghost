@@ -225,15 +225,37 @@ class ChatMixin:
                 stream=True,
                 **completion_kwargs(model, max_tokens=2000),
             )
-            full = []
+            # Batch deltas to reduce cross-thread evaluate_js pressure on
+            # WebView2's dispatch queue. The OpenAI stream emits 30–80
+            # token-sized deltas per second; turning each into its own
+            # evaluate_js call saturates the message pump, which is
+            # especially bad during cold-init. Coalescing every 50ms or
+            # 16 tokens (whichever comes first) drops that to ~20 calls
+            # per second with no visible UI change — the frontend just
+            # appends payload.chunk to the message text, so "ab" arriving
+            # together is identical to "a" then "b" arriving separately.
+            flush_interval_s = 0.05
+            flush_buffer_size = 16
+            full: list[str] = []
+            pending: list[str] = []
+            last_flush = time.monotonic()
             for event in stream:
                 try:
                     delta = event.choices[0].delta.content if event.choices else None
                     if delta:
                         full.append(delta)
-                        self._stream_emit_chunk(stream_id, delta)
+                        pending.append(delta)
+                        now = time.monotonic()
+                        if (len(pending) >= flush_buffer_size
+                                or (now - last_flush) >= flush_interval_s):
+                            self._stream_emit_chunk(stream_id, "".join(pending))
+                            pending.clear()
+                            last_flush = now
                 except Exception as e:
                     print(f"[stream] chunk skip: {e}", flush=True)
+            # Flush any tail tokens that didn't hit the size/interval threshold.
+            if pending:
+                self._stream_emit_chunk(stream_id, "".join(pending))
             text_full = "".join(full)
             # Persiste a resposta no history pra próxima chamada ter contexto
             self._history.append({"role": "assistant", "content": text_full})
