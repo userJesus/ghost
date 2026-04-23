@@ -22,8 +22,13 @@ from src.infra.logging_setup import get_logger
 
 log = get_logger(__name__)
 
-# Default realtime model. Voice-capable preview of GPT-4o family.
-DEFAULT_REALTIME_MODEL = "gpt-4o-realtime-preview"
+# Default realtime model. `gpt-realtime` is the GA release — cheaper than
+# the older `gpt-4o-realtime-preview` ($32/$64 vs $100/$200 per 1M audio
+# tokens) and higher-quality voice. Supports vision inputs natively via
+# `conversation.item.create` with image content parts, which opens the
+# door to collapsing the "voice agent + separate vision sub-agent" loop
+# into a single model call once the automation tools are in.
+DEFAULT_REALTIME_MODEL = "gpt-realtime"
 
 # Default TTS voice for OpenAI Realtime (alloy, ash, ballad, coral, echo,
 # sage, shimmer, verse). 'coral' soa natural em pt-BR.
