@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ghost"
-version = "1.1.29"
+version = "1.1.30"
 description = "Ghost — a Windows desktop AI assistant built with pywebview, Python, Alpine.js and OpenAI. macOS port planned. Non-commercial use only."
 readme = "README.md"
 requires-python = ">=3.12"

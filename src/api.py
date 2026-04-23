@@ -205,11 +205,13 @@ class GhostAPI(WindowMixin, CaptureMixin, ChatMixin, MeetingMixin):
         # they can push progress events / JS callbacks without holding a
         # stale window reference when Ghost recreates it.
         from .services.history_service import HistoryService
+        from .services.realtime_agent_service import RealtimeAgentService
         from .services.settings_service import SettingsService
         from .services.update_service import UpdateService
         self._update_svc = UpdateService(lambda: self._window)
         self._settings_svc = SettingsService()
         self._history_svc = HistoryService()
+        self._realtime_svc = RealtimeAgentService()
 
     def set_window(self, window):
         self._window = window
@@ -525,6 +527,44 @@ class GhostAPI(WindowMixin, CaptureMixin, ChatMixin, MeetingMixin):
             return {"ok": True}
         except Exception as e:
             return {"error": _log_error("voice_cancel", e)}
+
+    # ============ Realtime voice agent (BETA) ============
+
+    def realtime_create_session(self) -> dict:
+        """Mint an OpenAI Realtime ephemeral token + return tool catalog.
+
+        The browser uses the token to establish WebRTC directly with OpenAI.
+        Tool calls from the model are dispatched to existing pywebview.api
+        methods by web/js/realtime-agent.js. Real API key never leaves Python.
+        """
+        try:
+            return self._realtime_svc.create_session()
+        except Exception as e:
+            return {"error": _log_error("realtime_create_session", e)}
+
+    def realtime_end_session(self) -> dict:
+        """Bookkeeping-only. The browser tears down the WebRTC peer itself."""
+        try:
+            return self._realtime_svc.end_session()
+        except Exception as e:
+            return {"error": _log_error("realtime_end_session", e)}
+
+    def realtime_log(self, level: str, stage: str, detail: str) -> dict:
+        """Logs a realtime-agent browser-side event into ghost.log.
+
+        Used by web/js/realtime-agent.js to surface getUserMedia failures,
+        SDP handshake errors, and data-channel events to the Python log so
+        they're visible outside DevTools. Level is 'info' | 'warn' | 'error'.
+        """
+        try:
+            line = f"[realtime/js] {stage}: {detail}"
+            if (level or "").lower() == "error":
+                print(line, file=sys.stderr, flush=True)
+            else:
+                print(line, flush=True)
+            return {"ok": True}
+        except Exception:
+            return {"ok": False}
 
     def open_url(self, url: str) -> dict:
         """Open a URL in the user's default browser (Windows: ShellExecute)."""

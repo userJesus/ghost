@@ -24,6 +24,9 @@
     <!-- Shared helpers (escapeHTML, stripMarkdown, tooltip manager, TTS voice picker).
          Must load after marked and before app.js / inline page scripts. -->
     <script src="shared/common.js"></script>
+    <!-- Realtime voice agent (BETA) — exposes window.GhostRealtime.
+         Must load before app.js so Alpine's init() can wire state listeners. -->
+    <script src="js/realtime-agent.js"></script>
 </head>
 <body x-data="ghostApp()" x-init="init()" x-cloak>
 <!-- Safety net: remove x-cloak após 3s mesmo se Alpine falhar -->
@@ -112,6 +115,25 @@
                                 <path d="M6 10L3 7l3-3M10 6l3 3-3 3M8 2.5L7 13.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
                             </svg>
                             <span class="tool-dot tool-dot-rec" x-show="cloneRunning"></span>
+                        </button>
+
+                        <!-- Realtime voice agent (BETA): chat por voz em tempo real
+                             com o Ghost podendo executar ações reais (minimizar,
+                             capturar, ler clipboard, etc) através de tool calls. -->
+                        <button class="tool-btn beta-feature" data-label="Agente"
+                                :class="{ recording: agentActive, processing: agentConnecting, locked: apiKeyMissing }"
+                                @click="toggleAgent()"
+                                :disabled="agentConnecting || apiKeyMissing"
+                                data-tooltip-pos="below"
+                                :data-tooltip="apiKeyMissing ? apiLockTooltip : agentTooltip">
+                            <svg viewBox="0 0 16 16" fill="none">
+                                <circle cx="8" cy="8" r="2" fill="currentColor"/>
+                                <path d="M3 8a5 5 0 0010 0M8 13v2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+                                <path d="M5.5 5.5l-1.5-1.5M10.5 5.5l1.5-1.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+                            </svg>
+                            <span class="beta-pill">BETA</span>
+                            <span class="tool-dot tool-dot-rec" x-show="agentActive"></span>
+                            <span class="tool-lock" x-show="apiKeyMissing"></span>
                         </button>
 
                         <button class="tool-btn" data-label="Auto-ler"
@@ -654,6 +676,32 @@
     </a>
 </div>
 
+
+<!-- Realtime agent status overlay (aparece quando o agente de voz está
+     conectado ou discando — mostra estado + último tool chamado). -->
+<div class="agent-overlay" x-show="agentActive || agentConnecting" x-cloak x-transition>
+    <div class="agent-overlay-inner">
+        <div class="agent-overlay-orb" :class="{ speaking: agentSpeaking, listening: agentListening }">
+            <span class="agent-overlay-orb-core"></span>
+            <span class="agent-overlay-orb-ring"></span>
+        </div>
+        <div class="agent-overlay-body">
+            <div class="agent-overlay-title">
+                <span x-show="agentConnecting && !agentActive">Conectando agente...</span>
+                <span x-show="agentActive && !agentSpeaking && !agentListening">Agente pronto — fale</span>
+                <span x-show="agentActive && agentListening">Ouvindo...</span>
+                <span x-show="agentActive && agentSpeaking">Respondendo...</span>
+            </div>
+            <div class="agent-overlay-sub" x-text="agentLastAction" x-show="agentLastAction"></div>
+            <div class="agent-overlay-sub agent-overlay-error" x-text="agentError" x-show="agentError"></div>
+        </div>
+        <button class="agent-overlay-close" @click="stopAgent()" data-tooltip="Encerrar sessão (Esc)">
+            <svg viewBox="0 0 12 12" fill="none">
+                <path d="M3 3l6 6M9 3l-6 6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+            </svg>
+        </button>
+    </div>
+</div>
 
 <!-- Drag overlay (aparece quando arrastando arquivo) -->
 <div class="drag-overlay" x-show="isDragOver" x-cloak>

@@ -108,6 +108,21 @@
                 </ul>
             </div>
 
+            <!-- ============ Agente de voz em tempo real (BETA) ============ -->
+            <div class="help-group">
+                <div class="help-group-title">
+                    <span class="help-group-icon">🎧</span>
+                    Agente de voz em tempo real <span class="beta-pill">BETA</span>
+                </div>
+                <ul class="help-list">
+                    <li>Botão <strong>Agente</strong> na barra de ferramentas. Ao clicar, abre uma conversa de voz ao vivo com o Ghost usando a OpenAI Realtime API — você fala, o Ghost fala de volta.</li>
+                    <li>Diferente dos outros modos, o agente pode <strong>executar ações no computador</strong> sozinho: minimizar/maximizar janela, capturar tela, rolar página, ler clipboard, abrir URL (pede confirmação), listar monitores, etc.</li>
+                    <li>Exemplos de comando: <em>"captura a tela e me diz o que tá acontecendo"</em>, <em>"minimiza isso aqui"</em>, <em>"o que tem no meu clipboard?"</em>, <em>"abre o GitHub pra mim"</em>.</li>
+                    <li>Enquanto conectado, aparece um <strong>orb flutuante</strong> no canto inferior direito com o estado atual (verde = ouvindo, laranja = falando). Clique no X pra encerrar.</li>
+                    <li>Roda em BETA — o áudio trafega via WebRTC diretamente do browser do Ghost pra OpenAI; sua chave de API nunca sai do seu computador (só um token temporário de ~60s é exposto pro browser).</li>
+                </ul>
+            </div>
+
             <!-- ============ Clonar site ============ -->
             <div class="help-group">
                 <div class="help-group-title">

@@ -81,6 +81,20 @@ Titulagem dinâmica gerada pela IA. **Branch** resume a conversa atual antes de 
 <tr>
 <td width="50%" valign="top">
 
+### 🎧 Agente de voz em tempo real <sub><code>BETA</code></sub>
+Conversa por voz ao vivo via OpenAI Realtime (WebRTC). O agente **executa ações no Ghost sozinho** — capturar tela, minimizar, vigiar, ler clipboard, abrir URL — com function calling roteado para os mesmos botões que você clica.
+
+</td>
+<td width="50%" valign="top">
+
+### ⚡ WebRTC com ephemeral tokens
+O áudio trafega direto do Ghost pra OpenAI via WebRTC; sua chave da OpenAI **nunca** sai do Python. O browser recebe só um token de ~60s usado pra abrir o peer connection.
+
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+
 ### 🔄 Atualizações automáticas
 Toda vez que abre, o Ghost consulta a API de releases do GitHub. Quando sai uma versão nova, um banner verde aparece com um botão **Baixar** — você decide quando atualizar.
 

@@ -53,6 +53,17 @@ function ghostApp() {
         voiceTranscribing: false,   // ativo enquanto o Whisper processa
         voiceElapsed: '0:00',
         _voiceTimer: null,
+        // ===== Realtime voice agent (BETA) =====
+        // Sessão WebRTC com OpenAI Realtime. O modelo pode chamar ações
+        // reais do Ghost (minimize/capture/etc) via tool calls que são
+        // roteados de volta por web/js/realtime-agent.js.
+        agentActive: false,
+        agentConnecting: false,
+        agentSpeaking: false,
+        agentListening: false,
+        agentLastAction: '',
+        agentError: '',
+        _agentListenerOff: null,
         pendingCapture: null,       // { thumbnail, label } — imagem capturada aguardando pergunta do usuário
         systemTranscript: '',       // contexto transcrito do áudio do sistema
                                     // (aparece acima do input pra usuário
@@ -199,6 +210,11 @@ function ghostApp() {
             if (this.meetingProcessing) return 'BETA · Gerando transcrição + resumo no desktop';
             if (this.meetingRunning)    return 'BETA · Parar de gravar e gerar documento';
             return 'BETA · Iniciar gravação (áudio + screenshots + resumo). Dica: pra reunião no navegador, abra a aba numa JANELA separada.';
+        },
+        get agentTooltip() {
+            if (this.agentConnecting) return 'BETA · Conectando ao agente de voz...';
+            if (this.agentActive)     return 'BETA · Encerrar sessão de voz em tempo real';
+            return 'BETA · Agente de voz em tempo real — fala e executa ações (captura, minimiza, scroll, etc)';
         },
 
         // ═══════════════════════════════════════════════════════════════
@@ -357,6 +373,107 @@ function ghostApp() {
                 // Remove x-cloak manualmente pra garantir que UI apareça
                 document.body.removeAttribute('x-cloak');
             }
+        },
+
+        // ═══════════════════════════════════════════════════════════════
+        // REALTIME VOICE AGENT (BETA)
+        //   WebRTC com OpenAI Realtime. Usuário fala, modelo responde
+        //   em áudio, e pode chamar tools (minimize/capture/scroll/etc)
+        //   que são roteadas de volta pra pywebview.api.* por
+        //   web/js/realtime-agent.js.
+        // ═══════════════════════════════════════════════════════════════
+        async toggleAgent() {
+            if (this.agentConnecting) return;
+            if (this.agentActive) {
+                await this.stopAgent();
+            } else {
+                await this.startAgent();
+            }
+        },
+
+        async startAgent() {
+            if (!window.GhostRealtime) {
+                this.agentError = 'Módulo do agente não carregou';
+                return;
+            }
+            if (this.apiKeyMissing) {
+                this.agentError = 'Configure a chave da OpenAI primeiro';
+                return;
+            }
+            this.agentConnecting = true;
+            this.agentError = '';
+            this.agentLastAction = '';
+
+            // Inscreve nos eventos do agente pra atualizar UI (orb pulsar etc).
+            if (this._agentListenerOff) { this._agentListenerOff(); this._agentListenerOff = null; }
+            this._agentListenerOff = window.GhostRealtime.onStateChange((evt) => {
+                switch (evt.type) {
+                    case 'connecting':
+                        this.agentConnecting = true;
+                        break;
+                    case 'connected':
+                        this.agentConnecting = false;
+                        this.agentActive = true;
+                        this.setStatus('Agente de voz conectado');
+                        break;
+                    case 'session_ready':
+                        // Primeiro session.update aplicado — tudo pronto.
+                        break;
+                    case 'user_speech_start':
+                        this.agentListening = true;
+                        break;
+                    case 'user_speech_stop':
+                        this.agentListening = false;
+                        break;
+                    case 'assistant_speaking':
+                        this.agentSpeaking = true;
+                        break;
+                    case 'assistant_done':
+                        this.agentSpeaking = false;
+                        break;
+                    case 'tool_call_start':
+                        this.agentLastAction = `Executando ${evt.name}...`;
+                        break;
+                    case 'tool_call_done': {
+                        const err = evt.result?.error;
+                        this.agentLastAction = err
+                            ? `Falhou: ${evt.name} — ${err}`
+                            : `Executou ${evt.name}`;
+                        break;
+                    }
+                    case 'disconnected':
+                        this.agentActive = false;
+                        this.agentConnecting = false;
+                        this.agentSpeaking = false;
+                        this.agentListening = false;
+                        break;
+                    case 'error':
+                        this.agentError = evt.message || 'Erro desconhecido';
+                        this.agentConnecting = false;
+                        break;
+                }
+            });
+
+            try {
+                const r = await window.GhostRealtime.start();
+                if (r?.error) {
+                    this.agentError = r.error;
+                    this.agentConnecting = false;
+                }
+            } catch (e) {
+                this.agentError = String(e?.message || e);
+                this.agentConnecting = false;
+            }
+        },
+
+        async stopAgent() {
+            try { await window.GhostRealtime?.stop(); } catch (_) {}
+            this.agentActive = false;
+            this.agentConnecting = false;
+            this.agentSpeaking = false;
+            this.agentListening = false;
+            this.agentLastAction = '';
+            if (this._agentListenerOff) { this._agentListenerOff(); this._agentListenerOff = null; }
         },
 
         // ═══════════════════════════════════════════════════════════════
