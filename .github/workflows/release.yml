@@ -59,7 +59,7 @@ jobs:
           "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DAppVersion=${{ steps.v.outputs.version }} installer\windows\ghost.iss
 
       - name: Upload Windows installer artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ghost-windows
           path: installer/windows/Output/GhostSetup-*.exe
